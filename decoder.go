@@ -9,26 +9,41 @@ import (
 )
 
 type Decoder struct {
-	reader  io.Reader
-	scanner *bufio.Scanner
+	scanner        *bufio.Scanner
+	checkedVersion bool
+	err            error
 }
 
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{
-		reader:  r,
 		scanner: bufio.NewScanner(r),
 	}
 }
 
-func (decoder *Decoder) Decode(rosbag *Rosbag) error {
+// Next returns the next record in the rosbag. Next might will return nil record and error
+// at the beginning to mark that the rosbag format version is supported. When, it reaches EOF,
+// Next returns io.EOF error.
+func (decoder *Decoder) Next() (*Record, error) {
 	var err error
-	if err = decoder.decodeVersion(rosbag); err != nil {
-		return err
+
+	if decoder.err != nil {
+		return nil, decoder.err
 	}
-	return nil
+
+	if !decoder.checkedVersion {
+		if err = decoder.checkVersion(); err != nil {
+			decoder.err = err
+			return nil, err
+		}
+
+		decoder.checkedVersion = true
+	}
+	return nil, nil
 }
 
-func (decoder *Decoder) decodeVersion(rosbag *Rosbag) error {
+func (decoder *Decoder) checkVersion() error {
+	var version Version
+
 	decoder.scanner.Split(scanStrictLines)
 	found := decoder.scanner.Scan()
 	if !found {
@@ -40,13 +55,13 @@ func (decoder *Decoder) decodeVersion(rosbag *Rosbag) error {
 	}
 
 	versionLine := decoder.scanner.Text()
-	_, err := fmt.Sscanf(versionLine, versionFormat, &rosbag.Version.Major, &rosbag.Version.Minor)
+	_, err := fmt.Sscanf(versionLine, versionFormat, &version.Major, &version.Minor)
 	if err != nil {
 		return err
 	}
 
-	if rosbag.Version.Major != supportedVersion.Major || rosbag.Version.Minor != supportedVersion.Minor {
-		return fmt.Errorf("%s is not supported. %s is the current supported version", &rosbag.Version, &supportedVersion)
+	if version.Major != supportedVersion.Major || version.Minor != supportedVersion.Minor {
+		return fmt.Errorf("%s is not supported. %s is the current supported version", &version, &supportedVersion)
 	}
 
 	return nil
