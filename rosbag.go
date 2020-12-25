@@ -26,3 +26,13 @@ type Rosbag struct {
 	Version Version
 	Record  []Record
 }
+
+type Record interface {
+	Header() []byte
+	Data() []byte
+}
+
+type RecordBase struct {
+	Header []byte
+	Data   []byte
+}
