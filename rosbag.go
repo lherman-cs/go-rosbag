@@ -33,6 +33,14 @@ type Record interface {
 }
 
 type RecordBase struct {
-	Header []byte
-	Data   []byte
+	header []byte
+	data   []byte
+}
+
+func (record *RecordBase) Header() []byte {
+	return record.header
+}
+
+func (record *RecordBase) Data() []byte {
+	return record.data
 }

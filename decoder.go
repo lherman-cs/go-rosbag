@@ -31,7 +31,7 @@ func NewDecoder(r io.Reader) *Decoder {
 // Next returns the next record in the rosbag. Next might will return nil record and error
 // at the beginning to mark that the rosbag format version is supported. When, it reaches EOF,
 // Next returns io.EOF error.
-func (decoder *Decoder) Next() (*Record, error) {
+func (decoder *Decoder) Next() (Record, error) {
 	var err error
 
 	if decoder.err != nil {
@@ -46,7 +46,13 @@ func (decoder *Decoder) Next() (*Record, error) {
 
 		decoder.checkedVersion = true
 	}
-	return nil, nil
+
+	record, err := decoder.decodeRecord()
+	if err != nil {
+		decoder.err = err
+		return nil, err
+	}
+	return record, nil
 }
 
 func (decoder *Decoder) split(data []byte, atEOF bool) (advance int, token []byte, err error) {
@@ -56,7 +62,7 @@ func (decoder *Decoder) split(data []byte, atEOF bool) (advance int, token []byt
 func (decoder *Decoder) checkVersion() error {
 	var version Version
 
-	decoder.scanner.Split(scanStrictLines)
+	decoder.splitFunc = scanStrictLines
 	found := decoder.scanner.Scan()
 	if !found {
 		err := decoder.scanner.Err()
@@ -77,6 +83,20 @@ func (decoder *Decoder) checkVersion() error {
 	}
 
 	return nil
+}
+
+func (decoder *Decoder) decodeRecord() (Record, error) {
+	var recordBase *RecordBase
+	decoder.splitFunc = newScanRecords(func(record *RecordBase) {
+		recordBase = record
+	})
+
+	found := decoder.scanner.Scan()
+	if !found {
+		return nil, decoder.scanner.Err()
+	}
+
+	return recordBase, nil
 }
 
 // scanStrictLines is similar to bufio.ScanLines but it's more strict, it requires a new line
@@ -120,7 +140,7 @@ func newScanRecords(cb func(record *RecordBase)) bufio.SplitFunc {
 		if uint32(len(data[recordLen:])) < headerLen {
 			return 0, nil, nil
 		}
-		record.Header = data[recordLen : recordLen+int(headerLen)]
+		record.header = data[recordLen : recordLen+int(headerLen)]
 		recordLen += int(headerLen)
 
 		if len(data[recordLen:]) < dataLenInBytes {
@@ -132,7 +152,7 @@ func newScanRecords(cb func(record *RecordBase)) bufio.SplitFunc {
 		if uint32(len(data[recordLen:])) < dataLen {
 			return 0, nil, nil
 		}
-		record.Data = data[recordLen : recordLen+int(dataLen)]
+		record.data = data[recordLen : recordLen+int(dataLen)]
 		recordLen += int(dataLen)
 
 		cb(&record)

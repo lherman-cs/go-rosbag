@@ -100,8 +100,8 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 			},
 			Expect: func(b []byte) *RecordBase {
 				return &RecordBase{
-					Header: b[4:5],
-					Data:   b[9:11],
+					header: b[4:5],
+					data:   b[9:11],
 				}
 			},
 		},
@@ -145,8 +145,8 @@ func TestDecoderScanRecordsMultipleRecords(t *testing.T) {
 	binary.LittleEndian.PutUint32(raw[16:], 2)
 
 	expected := []*RecordBase{
-		{Header: raw[4:5], Data: raw[9:10]},
-		{Header: raw[14:16], Data: raw[20:]},
+		{header: raw[4:5], data: raw[9:10]},
+		{header: raw[14:16], data: raw[20:]},
 	}
 
 	var actual *RecordBase
@@ -160,6 +160,36 @@ func TestDecoderScanRecordsMultipleRecords(t *testing.T) {
 		found := scanner.Scan()
 		if !found || scanner.Err() != nil {
 			t.Fatal("expected to get 2 records")
+		}
+
+		if !reflect.DeepEqual(actual, expected[i]) {
+			t.Fatalf("expected record to be\n\n%v\n\nbut got\n\n%v\n\n", expected[i], actual)
+		}
+	}
+}
+
+func TestDecoderNext(t *testing.T) {
+	version := []byte("#ROSBAG V2.0\n")
+	records := make([]byte, 22)
+	rand.Read(records)
+	binary.LittleEndian.PutUint32(records, 1)
+	binary.LittleEndian.PutUint32(records[5:], 1)
+	binary.LittleEndian.PutUint32(records[10:], 2)
+	binary.LittleEndian.PutUint32(records[16:], 2)
+	raw := append(version, records...)
+
+	expected := []*RecordBase{
+		{header: records[4:5], data: records[9:10]},
+		{header: records[14:16], data: records[20:]},
+	}
+
+	in := bytes.NewReader(raw)
+	decoder := NewDecoder(in)
+
+	for i := 0; i < 2; i++ {
+		actual, err := decoder.Next()
+		if err != nil {
+			t.Fatal(err)
 		}
 
 		if !reflect.DeepEqual(actual, expected[i]) {
