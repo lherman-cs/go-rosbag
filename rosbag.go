@@ -9,6 +9,8 @@ import (
 	"io"
 	"log"
 	"time"
+
+	"github.com/pierrec/lz4/v4"
 )
 
 const (
@@ -41,6 +43,7 @@ type Compression string
 const (
 	CompressionNone Compression = "none"
 	CompressionBZ2  Compression = "bz2"
+	CompressionLZ4  Compression = "lz4"
 )
 
 type Version struct {
@@ -151,6 +154,8 @@ func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
 		uncompressedReader = record.data
 	case CompressionBZ2:
 		uncompressedReader = bzip2.NewReader(record.data)
+	case CompressionLZ4:
+		uncompressedReader = lz4.NewReader(record.data)
 	default:
 		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2]")
 	}
