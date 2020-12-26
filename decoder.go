@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 )
 
 const (
+	lenInBytes            = 4
 	headerLenInBytes      = 4
 	dataLenInBytes        = 4
 	headerFieldLenInBytes = 4
@@ -21,18 +23,15 @@ var (
 )
 
 type Decoder struct {
-	scanner        *bufio.Scanner
+	reader         *bufio.Reader
 	checkedVersion bool
 	err            error
-	splitFunc      bufio.SplitFunc
+	lastRecord     Record
 }
 
 func NewDecoder(r io.Reader) *Decoder {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(nil, maxTokenSize)
-
-	decoder := Decoder{scanner: scanner}
-	scanner.Split(decoder.split)
+	reader := bufio.NewReaderSize(r, 4096)
+	decoder := Decoder{reader: reader}
 	return &decoder
 }
 
@@ -55,33 +54,35 @@ func (decoder *Decoder) Next() (Record, error) {
 		decoder.checkedVersion = true
 	}
 
-	record, err := decoder.decodeRecord()
+	if decoder.lastRecord != nil {
+		// We need to drain the reader until the end of the last record. Otherwise, the next record will
+		// start reading from anywhere in the last record.
+		lastRecordData := decoder.lastRecord.Data()
+		_, err := io.CopyN(ioutil.Discard, lastRecordData, lastRecordData.N)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	record, err := decodeRecord(decoder.reader)
 	if err != nil {
 		decoder.err = err
 		return nil, err
 	}
-	return record, nil
-}
 
-func (decoder *Decoder) split(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	return decoder.splitFunc(data, atEOF)
+	decoder.lastRecord = record
+	return record, nil
 }
 
 func (decoder *Decoder) checkVersion() error {
 	var version Version
 
-	decoder.splitFunc = scanStrictLines
-	found := decoder.scanner.Scan()
-	if !found {
-		err := decoder.scanner.Err()
-		if err == nil {
-			err = errors.New("failed to find version new line character delimiter")
-		}
-		return err
+	versionLine, err := decoder.reader.ReadString('\n')
+	if err != nil {
+		return errors.New("failed to find version new line character delimiter")
 	}
 
-	versionLine := decoder.scanner.Text()
-	_, err := fmt.Sscanf(versionLine, versionFormat, &version.Major, &version.Minor)
+	_, err = fmt.Sscanf(versionLine, versionFormat, &version.Major, &version.Minor)
 	if err != nil {
 		return err
 	}
@@ -93,59 +94,92 @@ func (decoder *Decoder) checkVersion() error {
 	return nil
 }
 
-func (decoder *Decoder) decodeRecord() (Record, error) {
-	var recordBase *RecordBase
-	decoder.splitFunc = newScanRecords(func(record *RecordBase) {
-		recordBase = record
-	})
-
-	found := decoder.scanner.Scan()
-	if !found {
-		err := decoder.scanner.Err()
-		if err == nil {
-			err = io.EOF
-		}
-
+func decodeRecord(r io.Reader) (Record, error) {
+	header, err := decodeHeader(r)
+	if err != nil {
 		return nil, err
 	}
 
-	op := OpInvalid
-	var err error
-	iterateHeaderFields(recordBase.header, func(key, value []byte) bool {
-		if bytes.Equal(key, opFieldKey) {
-			if len(value) == 0 {
-				err = errors.New("empty header field op value")
-			} else {
-				op = Op(value[0])
-			}
+	opFieldValue, err := findField(header, opFieldKey)
+	if err != nil {
+		return nil, err
+	}
 
+	if len(opFieldValue) == 0 {
+		return nil, errors.New("empty header field op value")
+	}
+
+	lenBuf := make([]byte, lenInBytes)
+	_, err = io.ReadFull(r, lenBuf)
+	if err != nil {
+		return nil, err
+	}
+	dataLen := endian.Uint32(lenBuf)
+	dataReader := io.LimitedReader{
+		N: int64(dataLen),
+		R: r,
+	}
+
+	base := RecordBase{
+		header: header,
+		data:   &dataReader,
+	}
+
+	op := Op(opFieldValue[0])
+	switch op {
+	case OpBagHeader:
+		return NewRecordBagHeader(&base)
+	case OpChunk:
+		return NewRecordChunk(&base)
+	case OpConnection:
+		return NewRecordConnection(&base)
+	case OpMessageData:
+		return NewRecordMessageData(&base)
+	case OpIndexData:
+		return NewRecordIndexData(&base)
+	case OpChunkInfo:
+		return NewRecordChunkInfo(&base)
+	default:
+		return nil, errors.New("invalid op value")
+	}
+}
+
+func decodeHeader(r io.Reader) ([]byte, error) {
+	lenBuf := make([]byte, lenInBytes)
+	_, err := io.ReadFull(r, lenBuf)
+	if err != nil {
+		return nil, err
+	}
+
+	headerLen := endian.Uint32(lenBuf)
+	header := make([]byte, headerLen)
+	_, err = io.ReadFull(r, header)
+	if err != nil {
+		return nil, err
+	}
+
+	return header, nil
+}
+
+func findField(header []byte, key []byte) (value []byte, err error) {
+	err = iterateHeaderFields(header, func(currentKey, currentValue []byte) bool {
+		if bytes.Equal(currentKey, key) {
+			value = currentValue
 			return false
 		}
 
 		return true
 	})
 
-	if op == OpInvalid {
-		if err != nil {
-			return nil, err
-		}
-
-		return nil, errors.New("required op field doesn't exist in the header fields")
+	if err != nil {
+		return nil, err
 	}
 
-	var record Record
-	switch op {
-	case OpBagHeader:
-		record = &RecordBagHeader{RecordBase: recordBase}
-	case OpChunk:
-		record = &RecordChunk{RecordBase: recordBase}
-	default:
-		// return nil, fmt.Errorf("%v is unsupported op code", op)
-		return nil, nil
+	if value == nil {
+		return nil, fmt.Errorf("%s field doesn't exist in the header fields", string(key))
 	}
 
-	err = record.unmarshall()
-	return record, err
+	return value, nil
 }
 
 func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
@@ -177,66 +211,4 @@ func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
 	}
 
 	return nil
-}
-
-// scanStrictLines is similar to bufio.ScanLines but it's more strict, it requires a new line
-// character to always exist at the end. And, it doesn't accept CR, only '\n' character.
-func scanStrictLines(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	if i := bytes.IndexByte(data, '\n'); i >= 0 {
-		// We have a full newline-terminated line.
-		return i + 1, data[:i], nil
-	}
-	// If we're at EOF, we have a final, non-terminated line. Return it.
-	if atEOF {
-		return len(data), nil, nil
-	}
-	// Request more data.
-	return 0, nil, nil
-}
-
-func newScanRecords(cb func(record *RecordBase)) bufio.SplitFunc {
-	return bufio.SplitFunc(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
-		var record RecordBase
-		var headerLen, dataLen uint32
-		var recordLen int
-
-		defer func() {
-			// Since we can't get more data but the data is still not enough to create a record,
-			// we need to error out since there's nothing we can do.
-			if advance == 0 && atEOF && len(data) > 0 {
-				err = errors.New("corrupted record data")
-			}
-		}()
-
-		if len(data) < headerLenInBytes {
-			return
-		}
-		headerLen = endian.Uint32(data[recordLen : recordLen+headerLenInBytes])
-		recordLen += headerLenInBytes
-
-		if uint32(len(data[recordLen:])) < headerLen {
-			return
-		}
-		record.header = data[recordLen : recordLen+int(headerLen)]
-		recordLen += int(headerLen)
-
-		if len(data[recordLen:]) < dataLenInBytes {
-			return
-		}
-		dataLen = endian.Uint32(data[recordLen : recordLen+dataLenInBytes])
-		recordLen += dataLenInBytes
-
-		if uint32(len(data[recordLen:])) < dataLen {
-			return
-		}
-		record.data = data[recordLen : recordLen+int(dataLen)]
-		recordLen += int(dataLen)
-
-		cb(&record)
-		advance, token = recordLen, data[:recordLen]
-		return
-	})
 }
