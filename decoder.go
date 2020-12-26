@@ -3,7 +3,6 @@ package rosbag
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -168,7 +167,7 @@ func newScanRecords(cb func(record *RecordBase)) bufio.SplitFunc {
 		if len(data) < headerLenInBytes {
 			return 0, nil, nil
 		}
-		headerLen = binary.LittleEndian.Uint32(data[recordLen : recordLen+headerLenInBytes])
+		headerLen = endian.Uint32(data[recordLen : recordLen+headerLenInBytes])
 		recordLen += headerLenInBytes
 
 		if uint32(len(data[recordLen:])) < headerLen {
@@ -180,7 +179,7 @@ func newScanRecords(cb func(record *RecordBase)) bufio.SplitFunc {
 		if len(data[recordLen:]) < dataLenInBytes {
 			return 0, nil, nil
 		}
-		dataLen = binary.LittleEndian.Uint32(data[recordLen : recordLen+dataLenInBytes])
+		dataLen = endian.Uint32(data[recordLen : recordLen+dataLenInBytes])
 		recordLen += dataLenInBytes
 
 		if uint32(len(data[recordLen:])) < dataLen {

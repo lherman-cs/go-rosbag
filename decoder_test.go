@@ -3,7 +3,6 @@ package rosbag
 import (
 	"bufio"
 	"bytes"
-	"encoding/binary"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -65,7 +64,7 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 			Name: "Not enough data for header",
 			Raw: func() []byte {
 				raw := make([]byte, 4)
-				binary.LittleEndian.PutUint32(raw, 4)
+				endian.PutUint32(raw, 4)
 				return raw
 			},
 			Fail: true,
@@ -74,7 +73,7 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 			Name: "Not enough data for data len",
 			Raw: func() []byte {
 				raw := make([]byte, 5)
-				binary.LittleEndian.PutUint32(raw, 1)
+				endian.PutUint32(raw, 1)
 				return raw
 			},
 			Fail: true,
@@ -83,8 +82,8 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 			Name: "Not enough data for data",
 			Raw: func() []byte {
 				raw := make([]byte, 9)
-				binary.LittleEndian.PutUint32(raw, 1)
-				binary.LittleEndian.PutUint16(raw[5:], 4)
+				endian.PutUint32(raw, 1)
+				endian.PutUint16(raw[5:], 4)
 				return raw
 			},
 			Fail: true,
@@ -94,8 +93,8 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 			Raw: func() []byte {
 				raw := make([]byte, 11)
 				rand.Read(raw)
-				binary.LittleEndian.PutUint32(raw, 1)
-				binary.LittleEndian.PutUint32(raw[5:9], 2)
+				endian.PutUint32(raw, 1)
+				endian.PutUint32(raw[5:9], 2)
 				return raw
 			},
 			Expect: func(b []byte) *RecordBase {
@@ -139,10 +138,10 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 func TestDecoderScanRecordsMultipleRecords(t *testing.T) {
 	raw := make([]byte, 22)
 	rand.Read(raw)
-	binary.LittleEndian.PutUint32(raw, 1)
-	binary.LittleEndian.PutUint32(raw[5:], 1)
-	binary.LittleEndian.PutUint32(raw[10:], 2)
-	binary.LittleEndian.PutUint32(raw[16:], 2)
+	endian.PutUint32(raw, 1)
+	endian.PutUint32(raw[5:], 1)
+	endian.PutUint32(raw[10:], 2)
+	endian.PutUint32(raw[16:], 2)
 
 	expected := []*RecordBase{
 		{header: raw[4:5], data: raw[9:10]},
@@ -172,10 +171,10 @@ func TestDecoderNext(t *testing.T) {
 	version := []byte("#ROSBAG V2.0\n")
 	records := make([]byte, 22)
 	rand.Read(records)
-	binary.LittleEndian.PutUint32(records, 1)
-	binary.LittleEndian.PutUint32(records[5:], 1)
-	binary.LittleEndian.PutUint32(records[10:], 2)
-	binary.LittleEndian.PutUint32(records[16:], 2)
+	endian.PutUint32(records, 1)
+	endian.PutUint32(records[5:], 1)
+	endian.PutUint32(records[10:], 2)
+	endian.PutUint32(records[16:], 2)
 	raw := append(version, records...)
 
 	expected := []*RecordBase{
