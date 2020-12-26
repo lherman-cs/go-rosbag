@@ -29,10 +29,14 @@ type Decoder struct {
 	lastRecord     Record
 }
 
-func NewDecoder(r io.Reader) *Decoder {
+func newDecoder(r io.Reader, hasVersionLine bool) *Decoder {
 	reader := bufio.NewReaderSize(r, 4096)
-	decoder := Decoder{reader: reader}
+	decoder := Decoder{reader: reader, checkedVersion: !hasVersionLine}
 	return &decoder
+}
+
+func NewDecoder(r io.Reader) *Decoder {
+	return newDecoder(r, true)
 }
 
 // Next returns the next record in the rosbag. Next might will return nil record and error

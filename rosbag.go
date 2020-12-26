@@ -2,7 +2,9 @@ package rosbag
 
 import (
 	"bytes"
+	"compress/bzip2"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -120,8 +122,9 @@ chunk_count : %d
 
 type RecordChunk struct {
 	*RecordBase
-	Compression Compression
-	Size        uint32
+	Compression      Compression
+	Size             uint32
+	chunkDataDecoder *Decoder
 }
 
 func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
@@ -142,6 +145,17 @@ func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
 		return true
 	})
 
+	var uncompressedReader io.Reader
+	switch record.Compression {
+	case CompressionNone:
+		uncompressedReader = record.data
+	case CompressionBZ2:
+		uncompressedReader = bzip2.NewReader(record.data)
+	default:
+		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2]")
+	}
+
+	record.chunkDataDecoder = newDecoder(uncompressedReader, false)
 	return &record, err
 }
 
@@ -150,6 +164,10 @@ func (record *RecordChunk) String() string {
 compression : %s
 size        : %d bytes
 `, record.Compression, record.Size)
+}
+
+func (record *RecordChunk) Next() (Record, error) {
+	return record.chunkDataDecoder.Next()
 }
 
 type RecordConnection struct {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/lherman-cs/go-rosbag"
@@ -25,5 +26,22 @@ func main() {
 		must(err)
 
 		fmt.Println(record)
+		chunkRecord, ok := record.(*rosbag.RecordChunk)
+		if !ok {
+			continue
+		}
+
+		for {
+			record, err = chunkRecord.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				} else {
+					must(err)
+				}
+			}
+
+			fmt.Println(record)
+		}
 	}
 }
