@@ -56,7 +56,7 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 		{
 			Name: "Not enough data for header len",
 			Raw: func() []byte {
-				return nil
+				return make([]byte, 2)
 			},
 			Fail: true,
 		},
@@ -164,6 +164,16 @@ func TestDecoderScanRecordsMultipleRecords(t *testing.T) {
 		if !reflect.DeepEqual(actual, expected[i]) {
 			t.Fatalf("expected record to be\n\n%v\n\nbut got\n\n%v\n\n", expected[i], actual)
 		}
+	}
+
+	found := scanner.Scan()
+	if found {
+		t.Fatal("expect no more tokens")
+	}
+
+	err := scanner.Err()
+	if err != nil {
+		t.Fatalf("expect EOF, so there shouldn't be any error, but got \"%v\"", err)
 	}
 }
 

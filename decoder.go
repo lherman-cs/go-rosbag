@@ -101,7 +101,12 @@ func (decoder *Decoder) decodeRecord() (Record, error) {
 
 	found := decoder.scanner.Scan()
 	if !found {
-		return nil, decoder.scanner.Err()
+		err := decoder.scanner.Err()
+		if err == nil {
+			err = io.EOF
+		}
+
+		return nil, err
 	}
 
 	op := OpInvalid
@@ -135,7 +140,8 @@ func (decoder *Decoder) decodeRecord() (Record, error) {
 	case OpChunk:
 		record = &RecordChunk{RecordBase: recordBase}
 	default:
-		return nil, fmt.Errorf("%v is unsupported op code", op)
+		// return nil, fmt.Errorf("%v is unsupported op code", op)
+		return nil, nil
 	}
 
 	err = record.unmarshall()
@@ -198,38 +204,39 @@ func newScanRecords(cb func(record *RecordBase)) bufio.SplitFunc {
 		var recordLen int
 
 		defer func() {
-			if advance == 0 && atEOF {
-				// Since we can't get more data but the data is still not enough to create a record,
-				// we need to error out since there's nothing we can do.
+			// Since we can't get more data but the data is still not enough to create a record,
+			// we need to error out since there's nothing we can do.
+			if advance == 0 && atEOF && len(data) > 0 {
 				err = errors.New("corrupted record data")
 			}
 		}()
 
 		if len(data) < headerLenInBytes {
-			return 0, nil, nil
+			return
 		}
 		headerLen = endian.Uint32(data[recordLen : recordLen+headerLenInBytes])
 		recordLen += headerLenInBytes
 
 		if uint32(len(data[recordLen:])) < headerLen {
-			return 0, nil, nil
+			return
 		}
 		record.header = data[recordLen : recordLen+int(headerLen)]
 		recordLen += int(headerLen)
 
 		if len(data[recordLen:]) < dataLenInBytes {
-			return 0, nil, nil
+			return
 		}
 		dataLen = endian.Uint32(data[recordLen : recordLen+dataLenInBytes])
 		recordLen += dataLenInBytes
 
 		if uint32(len(data[recordLen:])) < dataLen {
-			return 0, nil, nil
+			return
 		}
 		record.data = data[recordLen : recordLen+int(dataLen)]
 		recordLen += int(dataLen)
 
 		cb(&record)
-		return recordLen, data[:recordLen], nil
+		advance, token = recordLen, data[:recordLen]
+		return
 	})
 }
