@@ -197,3 +197,97 @@ func TestDecoderNext(t *testing.T) {
 		}
 	}
 }
+
+func TestIterateHeaderFields(t *testing.T) {
+	add := func(header, key, value []byte) []byte {
+		fieldLen := uint32(len(key) + 1 + len(value))
+		endian.PutUint32(header, fieldLen)
+		header = header[headerLenInBytes:]
+		copy(header, key)
+		header = header[len(key):]
+		header[0] = headerFieldDelimiter
+		header = header[1:]
+		copy(header, value)
+		header = header[len(value):]
+		return header
+	}
+
+	testCases := []struct {
+		Name           string
+		ExpectedFields [][2][]byte
+		Header         func() []byte
+		Fail           bool
+	}{
+		{
+			Name: "Single Field",
+			ExpectedFields: [][2][]byte{
+				{[]byte("op"), []byte{0x03}},
+			},
+			Header: func() []byte {
+				header := make([]byte, 8)
+				return header
+			},
+		},
+		{
+			Name: "Multiple Fields",
+			ExpectedFields: [][2][]byte{
+				{[]byte("op"), []byte{0x03}},
+				{[]byte("key1"), []byte("value1")},
+			},
+			Header: func() []byte {
+				header := make([]byte, 23)
+				return header
+			},
+		},
+		{
+			Name: "Invalid Field Length",
+			Header: func() []byte {
+				header := make([]byte, 8)
+				endian.PutUint32(header, 1)
+				return header
+			},
+			Fail: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+
+		t.Run(testCase.Name, func(t *testing.T) {
+			i := 0
+			expectedFields := testCase.ExpectedFields
+
+			header := testCase.Header()
+			cur := header
+			for _, field := range testCase.ExpectedFields {
+				key, value := field[0], field[1]
+				cur = add(cur, key, value)
+			}
+
+			err := iterateHeaderFields(header, func(key, value []byte) bool {
+				expectedKey, expectedValue := expectedFields[i][0], expectedFields[i][1]
+
+				if !bytes.Equal(expectedKey, key) {
+					t.Fatalf("expect header field to be %v, but got %v", expectedKey, key)
+				}
+
+				if !bytes.Equal(expectedValue, value) {
+					t.Fatalf("expect value to be %v, but got %v", expectedValue, value)
+				}
+
+				i++
+				return true
+			})
+
+			if testCase.Fail && err == nil {
+				t.Fatal("expected to fail")
+			} else if !testCase.Fail && err != nil {
+				t.Fatal("expected to succeed:", err)
+			}
+
+			if err == nil && len(testCase.ExpectedFields) != i {
+				t.Fatalf("expected the number of fields to be %d, but got %d", len(testCase.ExpectedFields), i)
+			}
+		})
+	}
+}

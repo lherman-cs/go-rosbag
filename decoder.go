@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	headerLenInBytes = 4
-	dataLenInBytes   = 4
+	headerLenInBytes      = 4
+	dataLenInBytes        = 4
+	headerFieldLenInBytes = 4
+	headerFieldDelimiter  = '='
+	opFieldKey            = "op"
 )
 
 type Decoder struct {
@@ -97,6 +100,37 @@ func (decoder *Decoder) decodeRecord() (Record, error) {
 	}
 
 	return recordBase, nil
+}
+
+func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
+	for len(header) > 0 {
+		if len(header) < headerFieldLenInBytes {
+			return errors.New("missing header field length")
+		}
+
+		fieldLen := int(endian.Uint32(header))
+		header = header[headerFieldLenInBytes:]
+		if len(header) < fieldLen {
+			return fmt.Errorf("expected header field len to be %d, but got %d", fieldLen, len(header))
+		}
+
+		i := bytes.IndexByte(header, headerFieldDelimiter)
+		if i == -1 {
+			return fmt.Errorf("invalid header field format, expected the key and value is separated by a '%c'", headerFieldDelimiter)
+		}
+
+		if fieldLen < i+1 {
+			return fmt.Errorf("invalid header field len, expected to be at least %d", i+1)
+		}
+
+		shouldContinue := cb(header[:i], header[i+1:fieldLen])
+		if !shouldContinue {
+			break
+		}
+		header = header[fieldLen:]
+	}
+
+	return nil
 }
 
 // scanStrictLines is similar to bufio.ScanLines but it's more strict, it requires a new line
