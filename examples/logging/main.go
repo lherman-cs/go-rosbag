@@ -25,23 +25,39 @@ func main() {
 		record, err := decoder.Next()
 		must(err)
 
-		fmt.Println(record)
+		// fmt.Println(record)
 		chunkRecord, ok := record.(*rosbag.RecordChunk)
 		if !ok {
 			continue
 		}
 
-		for {
-			record, err = chunkRecord.Next()
-			if err != nil {
-				if err == io.EOF {
-					break
-				} else {
-					must(err)
-				}
-			}
+		must(handleChunkRecord(chunkRecord))
+	}
+}
 
-			fmt.Println(record)
+func handleChunkRecord(chunkRecord *rosbag.RecordChunk) error {
+	for {
+		record, err := chunkRecord.Next()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			} else {
+				must(err)
+			}
+		}
+
+		switch record := record.(type) {
+		case *rosbag.RecordMessageData:
+			err = handleMessage(record)
+		}
+
+		if err != nil {
+			return err
 		}
 	}
+}
+
+func handleMessage(message *rosbag.RecordMessageData) error {
+	fmt.Println(message.Time)
+	return nil
 }

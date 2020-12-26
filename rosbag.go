@@ -223,7 +223,7 @@ func NewRecordMessageData(base *RecordBase) (*RecordMessageData, error) {
 		if bytes.Equal(key, []byte("conn")) {
 			record.Conn = endian.Uint32(value)
 		} else if bytes.Equal(key, []byte("time")) {
-			record.Time = nanoToTime(endian.Uint64(value))
+			record.Time = extractTime(value)
 		} else if bytes.Equal(key, []byte("op")) {
 			// explicit ignore
 		} else {
@@ -300,9 +300,9 @@ func NewRecordChunkInfo(base *RecordBase) (*RecordChunkInfo, error) {
 		} else if bytes.Equal(key, []byte("chunk_pos")) {
 			record.ChunkPos = endian.Uint64(value)
 		} else if bytes.Equal(key, []byte("start_time")) {
-			record.StartTime = nanoToTime(endian.Uint64(value))
+			record.StartTime = extractTime(value)
 		} else if bytes.Equal(key, []byte("end_time")) {
-			record.EndTime = nanoToTime(endian.Uint64(value))
+			record.EndTime = extractTime(value)
 		} else if bytes.Equal(key, []byte("count")) {
 			record.Count = endian.Uint32(value)
 		} else if bytes.Equal(key, []byte("op")) {
