@@ -13,7 +13,11 @@ const (
 	dataLenInBytes        = 4
 	headerFieldLenInBytes = 4
 	headerFieldDelimiter  = '='
-	opFieldKey            = "op"
+	maxTokenSize          = 8589934598
+)
+
+var (
+	opFieldKey = []byte("op")
 )
 
 type Decoder struct {
@@ -25,6 +29,8 @@ type Decoder struct {
 
 func NewDecoder(r io.Reader) *Decoder {
 	scanner := bufio.NewScanner(r)
+	scanner.Buffer(nil, maxTokenSize)
+
 	decoder := Decoder{scanner: scanner}
 	scanner.Split(decoder.split)
 	return &decoder
@@ -98,7 +104,42 @@ func (decoder *Decoder) decodeRecord() (Record, error) {
 		return nil, decoder.scanner.Err()
 	}
 
-	return recordBase, nil
+	op := OpInvalid
+	var err error
+	iterateHeaderFields(recordBase.header, func(key, value []byte) bool {
+		if bytes.Equal(key, opFieldKey) {
+			if len(value) == 0 {
+				err = errors.New("empty header field op value")
+			} else {
+				op = Op(value[0])
+			}
+
+			return false
+		}
+
+		return true
+	})
+
+	if op == OpInvalid {
+		if err != nil {
+			return nil, err
+		}
+
+		return nil, errors.New("required op field doesn't exist in the header fields")
+	}
+
+	var record Record
+	switch op {
+	case OpBagHeader:
+		record = &RecordBagHeader{RecordBase: recordBase}
+	case OpChunk:
+		record = &RecordChunk{RecordBase: recordBase}
+	default:
+		return nil, fmt.Errorf("%v is unsupported op code", op)
+	}
+
+	err = record.unmarshall()
+	return record, err
 }
 
 func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
