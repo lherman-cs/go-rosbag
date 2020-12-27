@@ -295,6 +295,12 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 					curRaw = curRaw[4:]
 					newValue = reflect.ValueOf(string(curRaw[:length]))
 					curRaw = curRaw[length:]
+				case "time":
+					newValue = reflect.ValueOf(extractTime(curRaw))
+					curRaw = curRaw[8:]
+				case "duration":
+					newValue = reflect.ValueOf(extractDuration(curRaw))
+					curRaw = curRaw[8:]
 				default:
 					if field.IsArray {
 						newValue = reflect.New(reflect.TypeOf(fieldValue.Interface()).Elem())

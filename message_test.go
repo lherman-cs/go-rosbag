@@ -4,6 +4,7 @@ import (
 	"math"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func addData(b []byte, v interface{}) []byte {
@@ -47,6 +48,16 @@ func addData(b []byte, v interface{}) []byte {
 		buf = make([]byte, 4+len(v))
 		endian.PutUint32(buf, uint32(len(v)))
 		copy(buf[4:], []byte(v))
+	case time.Time:
+		buf = make([]byte, 8)
+		endian.PutUint32(buf, uint32(v.Second()))
+		endian.PutUint32(buf[4:], uint32(v.Nanosecond()))
+	case time.Duration:
+		buf = make([]byte, 8)
+		sec := v / time.Second
+		nsec := sec * time.Second
+		endian.PutUint32(buf, uint32(sec))
+		endian.PutUint32(buf[4:], uint32(nsec))
 	}
 
 	return append(b, buf...)
@@ -69,6 +80,8 @@ Person person
 uint8[3] pixel
 Person[] children
 string string
+time time
+duration duration
 
 MSG: custom_msgs/Person
 uint8 age
@@ -79,21 +92,23 @@ uint8 age
 	}
 
 	type Data struct {
-		Bool     bool     `rosbag:"bool"`
-		Int8     int8     `rosbag:"int8"`
-		Uint8    uint8    `rosbag:"uint8"`
-		Int16    int16    `rosbag:"int16"`
-		Uint16   uint16   `rosbag:"uint16"`
-		Int32    int32    `rosbag:"int32"`
-		Uint32   uint32   `rosbag:"uint32"`
-		Int64    int64    `rosbag:"int64"`
-		Uint64   uint64   `rosbag:"uint64"`
-		Float32  float32  `rosbag:"float32"`
-		Float64  float64  `rosbag:"float64"`
-		Person   Person   `rosbag:"person"`
-		Pixel    []uint8  `rosbag:"pixel"`
-		Children []Person `rosbag:"children"`
-		String   string   `rosbag:"string"`
+		Bool     bool          `rosbag:"bool"`
+		Int8     int8          `rosbag:"int8"`
+		Uint8    uint8         `rosbag:"uint8"`
+		Int16    int16         `rosbag:"int16"`
+		Uint16   uint16        `rosbag:"uint16"`
+		Int32    int32         `rosbag:"int32"`
+		Uint32   uint32        `rosbag:"uint32"`
+		Int64    int64         `rosbag:"int64"`
+		Uint64   uint64        `rosbag:"uint64"`
+		Float32  float32       `rosbag:"float32"`
+		Float64  float64       `rosbag:"float64"`
+		Person   Person        `rosbag:"person"`
+		Pixel    []uint8       `rosbag:"pixel"`
+		Children []Person      `rosbag:"children"`
+		String   string        `rosbag:"string"`
+		Time     time.Time     `rosbag:"time"`
+		Duration time.Duration `rosbag:"duration"`
 	}
 
 	expected := Data{
@@ -116,7 +131,9 @@ uint8 age
 			{Age: 20},
 			{Age: 15},
 		},
-		String: "lukas",
+		String:   "lukas",
+		Time:     time.Unix(1, 10),
+		Duration: time.Since(time.Unix(1, 10)),
 	}
 
 	var msgDataRaw []byte
@@ -139,6 +156,8 @@ uint8 age
 	msgDataRaw = addData(msgDataRaw, expected.Children[0].Age)
 	msgDataRaw = addData(msgDataRaw, expected.Children[1].Age)
 	msgDataRaw = addData(msgDataRaw, expected.String)
+	msgDataRaw = addData(msgDataRaw, expected.Time)
+	msgDataRaw = addData(msgDataRaw, expected.Duration)
 
 	var msgDef MessageDefinition
 	err := msgDef.unmarshall(msgDefRaw)
