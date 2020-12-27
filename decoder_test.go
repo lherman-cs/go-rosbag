@@ -1,12 +1,16 @@
 package rosbag
 
 import (
-	"bufio"
 	"bytes"
-	"math/rand"
+	"io"
+	"io/ioutil"
 	"reflect"
 	"testing"
 )
+
+func bytesToLimitedReader(b []byte) *io.LimitedReader {
+	return &io.LimitedReader{R: bytes.NewReader(b), N: int64(len(b))}
+}
 
 func TestDecoderCheckVersion(t *testing.T) {
 	testCases := []struct {
@@ -46,12 +50,12 @@ func TestDecoderCheckVersion(t *testing.T) {
 	}
 }
 
-func TestDecoderScanRecordsSingleRecord(t *testing.T) {
+func TestDecodeRecord(t *testing.T) {
 	testCases := []struct {
 		Name   string
 		Raw    func() []byte
 		Fail   bool
-		Expect func([]byte) *RecordBase
+		Expect func([]byte) Record
 	}{
 		{
 			Name: "Not enough data for header len",
@@ -72,18 +76,11 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 		{
 			Name: "Not enough data for data len",
 			Raw: func() []byte {
-				raw := make([]byte, 5)
-				endian.PutUint32(raw, 1)
-				return raw
-			},
-			Fail: true,
-		},
-		{
-			Name: "Not enough data for data",
-			Raw: func() []byte {
-				raw := make([]byte, 9)
-				endian.PutUint32(raw, 1)
-				endian.PutUint16(raw[5:], 4)
+				raw := make([]byte, 12)
+				endian.PutUint32(raw, 8)
+				endian.PutUint32(raw[4:], 4)
+				copy(raw[8:], []byte("op="))
+				raw[11] = 0x03
 				return raw
 			},
 			Fail: true,
@@ -91,17 +88,24 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 		{
 			Name: "Exactly 1 record",
 			Raw: func() []byte {
-				raw := make([]byte, 11)
-				rand.Read(raw)
-				endian.PutUint32(raw, 1)
-				endian.PutUint32(raw[5:9], 2)
+				raw := make([]byte, 17)
+				endian.PutUint32(raw, 8)
+				endian.PutUint32(raw[4:], 4)
+				copy(raw[8:], []byte("op="))
+				raw[11] = 0x03
+				endian.PutUint32(raw[12:], 1)
 				return raw
 			},
-			Expect: func(b []byte) *RecordBase {
-				return &RecordBase{
-					header: b[4:5],
-					data:   b[9:11],
+			Expect: func(b []byte) Record {
+				record, err := NewRecordBagHeader(&RecordBase{
+					header: b[4:12],
+					data:   bytesToLimitedReader(b[16:17]),
+				})
+
+				if err != nil {
+					t.Fatal(err)
 				}
+				return record
 			},
 		},
 	}
@@ -109,71 +113,37 @@ func TestDecoderScanRecordsSingleRecord(t *testing.T) {
 	for _, testCase := range testCases {
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
-			var actual *RecordBase
 			raw := testCase.Raw()
-			in := bytes.NewReader(raw)
-			scanner := bufio.NewScanner(in)
-			scanner.Split(newScanRecords(func(record *RecordBase) {
-				actual = record
-			}))
-			found := scanner.Scan()
-			err := scanner.Err()
+			actual, err := decodeRecord(bytesToLimitedReader(raw))
 
-			if testCase.Fail && (err == nil || found) {
+			if testCase.Fail && err == nil {
 				t.Fatal("expected to fail")
-			} else if !testCase.Fail && (err != nil || !found) {
+			} else if !testCase.Fail && err != nil {
+				t.Log("here")
 				t.Fatal("expected to succeed:", err)
 			}
 
-			if found {
+			if err == nil {
 				expected := testCase.Expect(raw)
-				if !reflect.DeepEqual(actual, expected) {
-					t.Fatalf("expected record to be\n\n%v\n\nbut got\n\n%v\n\n", expected, actual)
+				if !reflect.DeepEqual(actual.Header(), expected.Header()) {
+					t.Fatalf("expected record header to be\n\n%v\n\nbut got\n\n%v\n\n", expected.Header(), actual.Header())
+				}
+
+				actualData, err := ioutil.ReadAll(actual.Data())
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				expectedData, err := ioutil.ReadAll(expected.Data())
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if !reflect.DeepEqual(actualData, expectedData) {
+					t.Fatalf("expected record data to be\n\n%v\n\nbut got\n\n%v\n\n", expectedData, actualData)
 				}
 			}
 		})
-	}
-}
-
-func TestDecoderScanRecordsMultipleRecords(t *testing.T) {
-	raw := make([]byte, 22)
-	rand.Read(raw)
-	endian.PutUint32(raw, 1)
-	endian.PutUint32(raw[5:], 1)
-	endian.PutUint32(raw[10:], 2)
-	endian.PutUint32(raw[16:], 2)
-
-	expected := []*RecordBase{
-		{header: raw[4:5], data: raw[9:10]},
-		{header: raw[14:16], data: raw[20:]},
-	}
-
-	var actual *RecordBase
-	in := bytes.NewReader(raw)
-	scanner := bufio.NewScanner(in)
-	scanner.Split(newScanRecords(func(record *RecordBase) {
-		actual = record
-	}))
-
-	for i := 0; i < 2; i++ {
-		found := scanner.Scan()
-		if !found || scanner.Err() != nil {
-			t.Fatal("expected to get 2 records")
-		}
-
-		if !reflect.DeepEqual(actual, expected[i]) {
-			t.Fatalf("expected record to be\n\n%v\n\nbut got\n\n%v\n\n", expected[i], actual)
-		}
-	}
-
-	found := scanner.Scan()
-	if found {
-		t.Fatal("expect no more tokens")
-	}
-
-	err := scanner.Err()
-	if err != nil {
-		t.Fatalf("expect EOF, so there shouldn't be any error, but got \"%v\"", err)
 	}
 }
 
