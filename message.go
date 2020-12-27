@@ -216,6 +216,7 @@ func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
 func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) error {
 	var visit func(*MessageDefinition, reflect.Value, []byte) ([]byte, error)
 	visit = func(curDef *MessageDefinition, curValue reflect.Value, curRaw []byte) ([]byte, error) {
+		var err error
 		if curValue.Kind() == reflect.Ptr {
 			curValue = reflect.Indirect(curValue)
 		}
@@ -275,6 +276,11 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 			case "float64":
 				fieldValue.SetFloat(math.Float64frombits(endian.Uint64(curRaw)))
 				curRaw = curRaw[8:]
+			default:
+				curRaw, err = visit(findComplexMsg(def, field.Type), fieldValue, curRaw)
+				if err != nil {
+					return nil, err
+				}
 			}
 		}
 		return nil, nil

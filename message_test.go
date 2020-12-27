@@ -2,6 +2,7 @@ package rosbag
 
 import (
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -60,7 +61,15 @@ int64 int64
 uint64 uint64
 float32 float32
 float64 float64
+Person person
+
+MSG: custom_msgs/Person
+uint8[] age
 `)
+
+	type Person struct {
+		Age uint8 `rosbag:"age"`
+	}
 
 	type Data struct {
 		Bool    bool    `rosbag:"bool"`
@@ -74,6 +83,7 @@ float64 float64
 		Uint64  uint64  `rosbag:"uint64"`
 		Float32 float32 `rosbag:"float32"`
 		Float64 float64 `rosbag:"float64"`
+		Person  Person  `rosbag:"person"`
 	}
 
 	expected := Data{
@@ -88,6 +98,9 @@ float64 float64
 		Uint64:  math.MaxUint64,
 		Float32: math.MaxFloat32 / 10,
 		Float64: math.MaxFloat64 / 10,
+		Person: Person{
+			Age: 24,
+		},
 	}
 
 	var msgDataRaw []byte
@@ -100,8 +113,9 @@ float64 float64
 	msgDataRaw = addData(msgDataRaw, expected.Uint32)
 	msgDataRaw = addData(msgDataRaw, expected.Int64)
 	msgDataRaw = addData(msgDataRaw, expected.Uint64)
+	msgDataRaw = addData(msgDataRaw, expected.Float32)
 	msgDataRaw = addData(msgDataRaw, expected.Float64)
-	msgDataRaw = addData(msgDataRaw, expected.Float64)
+	msgDataRaw = addData(msgDataRaw, expected.Person.Age)
 
 	var msgDef MessageDefinition
 	err := msgDef.unmarshall(msgDefRaw)
@@ -115,5 +129,7 @@ float64 float64
 		t.Fatal(err)
 	}
 
-	t.Log(data)
+	if !reflect.DeepEqual(&expected, &data) {
+		t.Fatalf("invalid parsed data.\n\nExpected:\n\n%+v\n\nActual:\n\n%+v", expected, data)
+	}
 }
