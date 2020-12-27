@@ -219,11 +219,11 @@ func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
 		} else if bytes.Equal(key, []byte("md5sum")) {
 			connectionHeader.MD5Sum = string(value)
 		} else if bytes.Equal(key, []byte("message_definition")) {
-			// TODO: parse message_definition
+			err = connectionHeader.MessageDefinition.unmarshall(value)
 		}
 		return true
 	})
-	return &connectionHeader, nil
+	return &connectionHeader, err
 }
 
 func (record *RecordConnection) String() string {
