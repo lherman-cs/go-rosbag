@@ -3,9 +3,51 @@ package rosbag
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"reflect"
 	"strconv"
 	"strings"
 )
+
+const (
+	rosbagStructTag = "rosbag"
+)
+
+/* TODO: Add this later to speed up a bit message decoder
+type MessageFieldType uint8
+
+const (
+	MessageFieldTypeBool MessageFieldType = iota + 1
+	MessageFieldTypeInt8
+	MessageFieldTypeUint8
+	MessageFieldTypeInt16
+	MessageFieldTypeUint16
+	MessageFieldTypeInt32
+	MessageFieldTypeUint32
+	MessageFieldTypeInt64
+	MessageFieldTypeUint64
+	MessageFieldTypeFloat32
+	MessageFieldTypeFloat64
+	MessageFieldTypeString
+	MessageFieldTypeTime
+	MessageFieldTypeDuration
+)
+
+func (t MessageFieldType) String() string {
+	switch t {
+	case MessageFieldTypeBool:
+		return "bool"
+	case MessageFieldTypeInt8:
+		return "int8"
+	case MessageFieldTypeInt16:
+		return "int16"
+	case MessageFieldTypeInt32:
+		return "int32"
+	default:
+		return "invalid"
+	}
+}
+*/
 
 type ConnectionHeader struct {
 	Topic             string
@@ -158,4 +200,86 @@ func (def *MessageFieldDefinition) String() string {
 		fieldValue += "=" + string(def.Value)
 	}
 	return fmt.Sprintf("%s %s%s\n", fieldType, def.Name, fieldValue)
+}
+
+// findComplexMsg iterates ComplexMsgs inside def, and find for msgType. msgType can have an optional
+// package name as prefix.
+func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
+	for _, cur := range def.ComplexMsgs {
+		if strings.HasSuffix(cur.Type, msgType) {
+			return &cur
+		}
+	}
+	return nil
+}
+
+func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) error {
+	var visit func(*MessageDefinition, reflect.Value, []byte) ([]byte, error)
+	visit = func(curDef *MessageDefinition, curValue reflect.Value, curRaw []byte) ([]byte, error) {
+		if curValue.Kind() == reflect.Ptr {
+			curValue = reflect.Indirect(curValue)
+		}
+
+		lookupMap := make(map[string]reflect.Value)
+		curType := curValue.Type()
+		for i := 0; i < curType.NumField(); i++ {
+			field := curType.Field(i)
+			tag, ok := field.Tag.Lookup(rosbagStructTag)
+			if !ok {
+				tag = field.Name
+			}
+			lookupMap[tag] = curValue.Field(i)
+		}
+
+		for _, field := range curDef.Fields {
+			fieldValue, ok := lookupMap[field.Name]
+			if !ok {
+				continue
+			}
+
+			switch field.Type {
+			case "bool":
+				var isTrue bool
+				if curRaw[0] != 0 {
+					isTrue = true
+				}
+				fieldValue.SetBool(isTrue)
+				curRaw = curRaw[1:]
+			case "int8":
+				fieldValue.SetInt(int64(curRaw[0]))
+				curRaw = curRaw[1:]
+			case "uint8":
+				fieldValue.SetUint(uint64(curRaw[0]))
+				curRaw = curRaw[1:]
+			case "int16":
+				fieldValue.SetInt(int64(endian.Uint16(curRaw)))
+				curRaw = curRaw[2:]
+			case "uint16":
+				fieldValue.SetUint(uint64(endian.Uint16(curRaw)))
+				curRaw = curRaw[2:]
+			case "int32":
+				fieldValue.SetInt(int64(endian.Uint32(curRaw)))
+				curRaw = curRaw[4:]
+			case "uint32":
+				fieldValue.SetUint(uint64(endian.Uint32(curRaw)))
+				curRaw = curRaw[4:]
+			case "int64":
+				fieldValue.SetInt(int64(endian.Uint64(curRaw)))
+				curRaw = curRaw[8:]
+			case "uint64":
+				fieldValue.SetUint(endian.Uint64(curRaw))
+				curRaw = curRaw[8:]
+			case "float32":
+				fieldValue.SetFloat(float64(math.Float32frombits(endian.Uint32(curRaw))))
+				curRaw = curRaw[4:]
+			case "float64":
+				fieldValue.SetFloat(math.Float64frombits(endian.Uint64(curRaw)))
+				curRaw = curRaw[8:]
+			}
+		}
+		return nil, nil
+	}
+
+	_, err := visit(def, reflect.ValueOf(data), raw)
+	return err
 }
