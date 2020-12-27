@@ -23,20 +23,22 @@ var (
 )
 
 type Decoder struct {
-	reader         *bufio.Reader
+	reader         io.Reader
 	checkedVersion bool
 	err            error
 	lastRecord     Record
 }
 
-func newDecoder(r io.Reader, hasVersionLine bool) *Decoder {
-	reader := bufio.NewReaderSize(r, 4096)
-	decoder := Decoder{reader: reader, checkedVersion: !hasVersionLine}
+func newDecoder(r io.Reader, hasVersionLine bool, withBuffer bool) *Decoder {
+	if withBuffer {
+		r = bufio.NewReader(r)
+	}
+	decoder := Decoder{reader: r, checkedVersion: !hasVersionLine}
 	return &decoder
 }
 
 func NewDecoder(r io.Reader) *Decoder {
-	return newDecoder(r, true)
+	return newDecoder(r, true, true)
 }
 
 // Next returns the next record in the rosbag. Next might will return nil record and error
@@ -81,12 +83,7 @@ func (decoder *Decoder) Next() (Record, error) {
 func (decoder *Decoder) checkVersion() error {
 	var version Version
 
-	versionLine, err := decoder.reader.ReadString('\n')
-	if err != nil {
-		return errors.New("failed to find version new line character delimiter")
-	}
-
-	_, err = fmt.Sscanf(versionLine, versionFormat, &version.Major, &version.Minor)
+	_, err := fmt.Fscanf(decoder.reader, versionFormat, &version.Major, &version.Minor)
 	if err != nil {
 		return err
 	}

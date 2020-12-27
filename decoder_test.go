@@ -21,7 +21,7 @@ func TestDecoderCheckVersion(t *testing.T) {
 		{
 			Name: "Missing Newline character",
 			Raw:  []byte("#ROSBAG V2.0"),
-			Fail: true,
+			Fail: false,
 		},
 		{
 			Name: "Unsupported Version",

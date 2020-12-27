@@ -160,7 +160,7 @@ func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
 		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2, lz4]")
 	}
 
-	record.chunkDataDecoder = newDecoder(uncompressedReader, false)
+	record.chunkDataDecoder = newDecoder(uncompressedReader, false, false)
 	return &record, err
 }
 
