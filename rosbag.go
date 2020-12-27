@@ -157,7 +157,7 @@ func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
 	case CompressionLZ4:
 		uncompressedReader = lz4.NewReader(record.data)
 	default:
-		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2]")
+		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2, lz4]")
 	}
 
 	record.chunkDataDecoder = newDecoder(uncompressedReader, false)
@@ -200,6 +200,30 @@ func NewRecordConnection(base *RecordBase) (*RecordConnection, error) {
 	})
 
 	return &record, err
+}
+
+// ConnectionHeader reads the underlying data and decode it to ConnectionHeader
+func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
+	header := make([]byte, record.data.N)
+	_, err := io.ReadFull(record.data, header)
+	if err != nil {
+		return nil, err
+	}
+
+	var connectionHeader ConnectionHeader
+	err = iterateHeaderFields(header, func(key, value []byte) bool {
+		if bytes.Equal(key, []byte("topic")) {
+			connectionHeader.Topic = string(value)
+		} else if bytes.Equal(key, []byte("type")) {
+			connectionHeader.Type = string(value)
+		} else if bytes.Equal(key, []byte("md5sum")) {
+			connectionHeader.MD5Sum = string(value)
+		} else if bytes.Equal(key, []byte("message_definition")) {
+			// TODO: parse message_definition
+		}
+		return true
+	})
+	return &connectionHeader, nil
 }
 
 func (record *RecordConnection) String() string {
