@@ -238,52 +238,79 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 				continue
 			}
 
-			switch field.Type {
-			case "bool":
-				var isTrue bool
-				if curRaw[0] != 0 {
-					isTrue = true
+			length := 1
+			if field.IsArray {
+				if field.ArraySize != 0 {
+					length = field.ArraySize
+				} else {
+					// If the array is dynamic, the array length is defined as 4 bytes integer
+					length = int(endian.Uint16(curRaw))
+					curRaw = curRaw[4:]
 				}
-				fieldValue.SetBool(isTrue)
-				curRaw = curRaw[1:]
-			case "int8":
-				fieldValue.SetInt(int64(curRaw[0]))
-				curRaw = curRaw[1:]
-			case "uint8":
-				fieldValue.SetUint(uint64(curRaw[0]))
-				curRaw = curRaw[1:]
-			case "int16":
-				fieldValue.SetInt(int64(endian.Uint16(curRaw)))
-				curRaw = curRaw[2:]
-			case "uint16":
-				fieldValue.SetUint(uint64(endian.Uint16(curRaw)))
-				curRaw = curRaw[2:]
-			case "int32":
-				fieldValue.SetInt(int64(endian.Uint32(curRaw)))
-				curRaw = curRaw[4:]
-			case "uint32":
-				fieldValue.SetUint(uint64(endian.Uint32(curRaw)))
-				curRaw = curRaw[4:]
-			case "int64":
-				fieldValue.SetInt(int64(endian.Uint64(curRaw)))
-				curRaw = curRaw[8:]
-			case "uint64":
-				fieldValue.SetUint(endian.Uint64(curRaw))
-				curRaw = curRaw[8:]
-			case "float32":
-				fieldValue.SetFloat(float64(math.Float32frombits(endian.Uint32(curRaw))))
-				curRaw = curRaw[4:]
-			case "float64":
-				fieldValue.SetFloat(math.Float64frombits(endian.Uint64(curRaw)))
-				curRaw = curRaw[8:]
-			default:
-				curRaw, err = visit(findComplexMsg(def, field.Type), fieldValue, curRaw)
-				if err != nil {
-					return nil, err
+			}
+
+			for i := 0; i < length; i++ {
+				var newValue reflect.Value
+
+				switch field.Type {
+				case "bool":
+					var isTrue bool
+					if curRaw[0] != 0 {
+						isTrue = true
+					}
+					newValue = reflect.ValueOf(isTrue)
+					curRaw = curRaw[1:]
+				case "int8":
+					newValue = reflect.ValueOf(int8(curRaw[0]))
+					curRaw = curRaw[1:]
+				case "uint8":
+					newValue = reflect.ValueOf(uint8(curRaw[0]))
+					curRaw = curRaw[1:]
+				case "int16":
+					newValue = reflect.ValueOf(int16(endian.Uint16(curRaw)))
+					curRaw = curRaw[2:]
+				case "uint16":
+					newValue = reflect.ValueOf(endian.Uint16(curRaw))
+					curRaw = curRaw[2:]
+				case "int32":
+					newValue = reflect.ValueOf(int32(endian.Uint32(curRaw)))
+					curRaw = curRaw[4:]
+				case "uint32":
+					newValue = reflect.ValueOf(endian.Uint32(curRaw))
+					curRaw = curRaw[4:]
+				case "int64":
+					newValue = reflect.ValueOf(int64(endian.Uint64(curRaw)))
+					curRaw = curRaw[8:]
+				case "uint64":
+					newValue = reflect.ValueOf(endian.Uint64(curRaw))
+					curRaw = curRaw[8:]
+				case "float32":
+					newValue = reflect.ValueOf(math.Float32frombits(endian.Uint32(curRaw)))
+					curRaw = curRaw[4:]
+				case "float64":
+					newValue = reflect.ValueOf(math.Float64frombits(endian.Uint64(curRaw)))
+					curRaw = curRaw[8:]
+				default:
+					if field.IsArray {
+						newValue = reflect.New(reflect.TypeOf(fieldValue.Interface()).Elem())
+					} else {
+						newValue = reflect.New(fieldValue.Type())
+					}
+					newValue = reflect.Indirect(newValue)
+					curRaw, err = visit(findComplexMsg(def, field.Type), newValue, curRaw)
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				if field.IsArray {
+					fieldValue.Set(reflect.Append(fieldValue, newValue))
+				} else {
+					fieldValue.Set(newValue)
 				}
 			}
 		}
-		return nil, nil
+		return curRaw, nil
 	}
 
 	_, err := visit(def, reflect.ValueOf(data), raw)

@@ -62,9 +62,11 @@ uint64 uint64
 float32 float32
 float64 float64
 Person person
+uint8[3] pixel
+Person[] children
 
 MSG: custom_msgs/Person
-uint8[] age
+uint8 age
 `)
 
 	type Person struct {
@@ -72,18 +74,20 @@ uint8[] age
 	}
 
 	type Data struct {
-		Bool    bool    `rosbag:"bool"`
-		Int8    int8    `rosbag:"int8"`
-		Uint8   uint8   `rosbag:"uint8"`
-		Int16   int16   `rosbag:"int16"`
-		Uint16  uint16  `rosbag:"uint16"`
-		Int32   int32   `rosbag:"int32"`
-		Uint32  uint32  `rosbag:"uint32"`
-		Int64   int64   `rosbag:"int64"`
-		Uint64  uint64  `rosbag:"uint64"`
-		Float32 float32 `rosbag:"float32"`
-		Float64 float64 `rosbag:"float64"`
-		Person  Person  `rosbag:"person"`
+		Bool     bool     `rosbag:"bool"`
+		Int8     int8     `rosbag:"int8"`
+		Uint8    uint8    `rosbag:"uint8"`
+		Int16    int16    `rosbag:"int16"`
+		Uint16   uint16   `rosbag:"uint16"`
+		Int32    int32    `rosbag:"int32"`
+		Uint32   uint32   `rosbag:"uint32"`
+		Int64    int64    `rosbag:"int64"`
+		Uint64   uint64   `rosbag:"uint64"`
+		Float32  float32  `rosbag:"float32"`
+		Float64  float64  `rosbag:"float64"`
+		Person   Person   `rosbag:"person"`
+		Pixel    []uint8  `rosbag:"pixel"`
+		Children []Person `rosbag:"children"`
 	}
 
 	expected := Data{
@@ -101,6 +105,11 @@ uint8[] age
 		Person: Person{
 			Age: 24,
 		},
+		Pixel: []uint8{1, 2, 3},
+		Children: []Person{
+			{Age: 20},
+			{Age: 15},
+		},
 	}
 
 	var msgDataRaw []byte
@@ -116,6 +125,12 @@ uint8[] age
 	msgDataRaw = addData(msgDataRaw, expected.Float32)
 	msgDataRaw = addData(msgDataRaw, expected.Float64)
 	msgDataRaw = addData(msgDataRaw, expected.Person.Age)
+	msgDataRaw = addData(msgDataRaw, expected.Pixel[0])
+	msgDataRaw = addData(msgDataRaw, expected.Pixel[1])
+	msgDataRaw = addData(msgDataRaw, expected.Pixel[2])
+	msgDataRaw = addData(msgDataRaw, uint32(2))
+	msgDataRaw = addData(msgDataRaw, expected.Children[0].Age)
+	msgDataRaw = addData(msgDataRaw, expected.Children[1].Age)
 
 	var msgDef MessageDefinition
 	err := msgDef.unmarshall(msgDefRaw)
