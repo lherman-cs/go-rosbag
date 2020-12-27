@@ -290,6 +290,11 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 				case "float64":
 					newValue = reflect.ValueOf(math.Float64frombits(endian.Uint64(curRaw)))
 					curRaw = curRaw[8:]
+				case "string":
+					length := endian.Uint32(curRaw)
+					curRaw = curRaw[4:]
+					newValue = reflect.ValueOf(string(curRaw[:length]))
+					curRaw = curRaw[length:]
 				default:
 					if field.IsArray {
 						newValue = reflect.New(reflect.TypeOf(fieldValue.Interface()).Elem())

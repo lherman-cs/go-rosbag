@@ -43,6 +43,10 @@ func addData(b []byte, v interface{}) []byte {
 	case float64:
 		buf = make([]byte, 8)
 		endian.PutUint64(buf, math.Float64bits(v))
+	case string:
+		buf = make([]byte, 4+len(v))
+		endian.PutUint32(buf, uint32(len(v)))
+		copy(buf[4:], []byte(v))
 	}
 
 	return append(b, buf...)
@@ -64,6 +68,7 @@ float64 float64
 Person person
 uint8[3] pixel
 Person[] children
+string string
 
 MSG: custom_msgs/Person
 uint8 age
@@ -88,6 +93,7 @@ uint8 age
 		Person   Person   `rosbag:"person"`
 		Pixel    []uint8  `rosbag:"pixel"`
 		Children []Person `rosbag:"children"`
+		String   string   `rosbag:"string"`
 	}
 
 	expected := Data{
@@ -110,6 +116,7 @@ uint8 age
 			{Age: 20},
 			{Age: 15},
 		},
+		String: "lukas",
 	}
 
 	var msgDataRaw []byte
@@ -131,6 +138,7 @@ uint8 age
 	msgDataRaw = addData(msgDataRaw, uint32(2))
 	msgDataRaw = addData(msgDataRaw, expected.Children[0].Age)
 	msgDataRaw = addData(msgDataRaw, expected.Children[1].Age)
+	msgDataRaw = addData(msgDataRaw, expected.String)
 
 	var msgDef MessageDefinition
 	err := msgDef.unmarshall(msgDefRaw)
