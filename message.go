@@ -3,6 +3,7 @@ package rosbag
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -33,12 +34,11 @@ type MessageDefinition struct {
 }
 
 func (def *MessageDefinition) unmarshall(b []byte) error {
-	fmt.Println(string(b))
+	var err error
 	lines := bytes.Split(b, []byte("\n"))
+	fmt.Println(string(b))
 
-	fmt.Printf("READING %d LINES\n", len(lines))
-	for i, line := range lines {
-		fmt.Printf("READING LINE #%d: %s\n", i, string(line))
+	for _, line := range lines {
 		// find comments
 		idx := bytes.IndexByte(line, '#')
 		if idx != -1 {
@@ -73,7 +73,17 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 
 		idx = bytes.IndexByte(fieldType, '[')
 		var isArray bool
+		var arraySize int
 		if idx != -1 {
+			off := bytes.IndexByte(fieldType[idx:], ']')
+			if off > 1 {
+				arraySizeRaw := fieldType[idx+1 : idx+off]
+				arraySize, err = strconv.Atoi(string(arraySizeRaw))
+				if err != nil {
+					return err
+				}
+			}
+
 			fieldType = fieldType[:idx]
 			isArray = true
 		}
@@ -93,15 +103,14 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		}
 
 		fieldDef := MessageFieldDefinition{
-			Type:    string(fieldType),
-			Name:    string(fieldName),
-			IsArray: isArray,
-			Value:   constantValue,
+			Type:      string(fieldType),
+			Name:      string(fieldName),
+			IsArray:   isArray,
+			ArraySize: arraySize,
+			Value:     constantValue,
 		}
 		complexMsg.Fields = append(complexMsg.Fields, fieldDef)
 	}
-
-	fmt.Println("FINISHED UNMARSHALLING")
 
 	return nil
 }
@@ -128,6 +137,8 @@ type MessageFieldDefinition struct {
 	Type    string
 	Name    string
 	IsArray bool
+	// ArraySize is only used when the field is a fixed-size array
+	ArraySize int
 	// Value is an optional field. It's only being used for constants
 	Value []byte
 }
@@ -135,7 +146,11 @@ type MessageFieldDefinition struct {
 func (def *MessageFieldDefinition) String() string {
 	fieldType := def.Type
 	if def.IsArray {
-		fieldType += "[]"
+		if def.ArraySize > 0 {
+			fieldType += fmt.Sprintf("[%d]", def.ArraySize)
+		} else {
+			fieldType += "[]"
+		}
 	}
 
 	fieldValue := ""
