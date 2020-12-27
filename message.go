@@ -223,18 +223,27 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 
 		lookupMap := make(map[string]reflect.Value)
 		curType := curValue.Type()
-		for i := 0; i < curType.NumField(); i++ {
-			field := curType.Field(i)
-			tag, ok := field.Tag.Lookup(rosbagStructTag)
-			if !ok {
-				tag = field.Name
+		if curType.Kind() == reflect.Struct {
+			for i := 0; i < curType.NumField(); i++ {
+				field := curType.Field(i)
+				tag, ok := field.Tag.Lookup(rosbagStructTag)
+				if !ok {
+					tag = field.Name
+				}
+				lookupMap[tag] = curValue.Field(i)
 			}
-			lookupMap[tag] = curValue.Field(i)
 		}
 
+		fmt.Println(curDef)
+		fmt.Println(curDef.Fields)
 		for _, field := range curDef.Fields {
+			// TODO: this is const, need to parse this
+			if len(field.Value) != 0 {
+				continue
+			}
+
 			fieldValue, ok := lookupMap[field.Name]
-			if !ok {
+			if !ok && curType.Kind() == reflect.Struct {
 				continue
 			}
 
@@ -260,9 +269,13 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 					}
 					newValue = reflect.ValueOf(isTrue)
 					curRaw = curRaw[1:]
+				case "byte":
+					fallthrough
 				case "int8":
 					newValue = reflect.ValueOf(int8(curRaw[0]))
 					curRaw = curRaw[1:]
+				case "char":
+					fallthrough
 				case "uint8":
 					newValue = reflect.ValueOf(uint8(curRaw[0]))
 					curRaw = curRaw[1:]
@@ -302,22 +315,31 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 					newValue = reflect.ValueOf(extractDuration(curRaw))
 					curRaw = curRaw[8:]
 				default:
-					if field.IsArray {
-						newValue = reflect.New(reflect.TypeOf(fieldValue.Interface()).Elem())
+					if curType.Kind() == reflect.Struct {
+						if field.IsArray {
+							newValue = reflect.New(reflect.TypeOf(fieldValue.Interface()).Elem())
+						} else {
+							newValue = reflect.New(fieldValue.Type())
+						}
+						newValue = reflect.Indirect(newValue)
 					} else {
-						newValue = reflect.New(fieldValue.Type())
+						newValue = reflect.ValueOf(make(map[string]interface{}))
 					}
-					newValue = reflect.Indirect(newValue)
+
 					curRaw, err = visit(findComplexMsg(def, field.Type), newValue, curRaw)
 					if err != nil {
 						return nil, err
 					}
 				}
 
-				if field.IsArray {
-					fieldValue.Set(reflect.Append(fieldValue, newValue))
+				if ok {
+					if field.IsArray {
+						fieldValue.Set(reflect.Append(fieldValue, newValue))
+					} else {
+						fieldValue.Set(newValue)
+					}
 				} else {
-					fieldValue.Set(newValue)
+					curValue.SetMapIndex(reflect.ValueOf(field.Name), newValue)
 				}
 			}
 		}

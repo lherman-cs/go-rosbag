@@ -47,11 +47,8 @@ func handleChunkRecord(chunkRecord *rosbag.RecordChunk) error {
 		}
 
 		switch record := record.(type) {
-		case *rosbag.RecordConnection:
-			fmt.Println(record)
-			hdr, err := record.ConnectionHeader()
-			must(err)
-			fmt.Println(hdr)
+		case *rosbag.RecordMessageData:
+			must(handleMessage(record))
 		}
 
 		if err != nil {
@@ -61,6 +58,9 @@ func handleChunkRecord(chunkRecord *rosbag.RecordChunk) error {
 }
 
 func handleMessage(message *rosbag.RecordMessageData) error {
-	fmt.Println(message.Time)
-	return nil
+	data := make(map[string]interface{})
+	err := message.UnmarshallTo(data)
+	must(err)
+	fmt.Println(data)
+	return err
 }

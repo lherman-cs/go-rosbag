@@ -27,18 +27,23 @@ type Decoder struct {
 	checkedVersion bool
 	err            error
 	lastRecord     Record
+	connections    map[uint32]*RecordConnection
 }
 
-func newDecoder(r io.Reader, hasVersionLine bool, withBuffer bool) *Decoder {
+func newDecoder(r io.Reader, hasVersionLine bool, withBuffer bool, conns map[uint32]*RecordConnection) *Decoder {
 	if withBuffer {
 		r = bufio.NewReader(r)
 	}
-	decoder := Decoder{reader: r, checkedVersion: !hasVersionLine}
+
+	if conns == nil {
+		conns = make(map[uint32]*RecordConnection)
+	}
+	decoder := Decoder{reader: r, checkedVersion: !hasVersionLine, connections: conns}
 	return &decoder
 }
 
 func NewDecoder(r io.Reader) *Decoder {
-	return newDecoder(r, true, true)
+	return newDecoder(r, true, true, nil)
 }
 
 // Next returns the next record in the rosbag. Next might will return nil record and error
@@ -70,7 +75,7 @@ func (decoder *Decoder) Next() (Record, error) {
 		}
 	}
 
-	record, err := decodeRecord(decoder.reader)
+	record, err := decodeRecord(decoder.reader, decoder.connections)
 	if err != nil {
 		decoder.err = err
 		return nil, err
@@ -95,7 +100,7 @@ func (decoder *Decoder) checkVersion() error {
 	return nil
 }
 
-func decodeRecord(r io.Reader) (Record, error) {
+func decodeRecord(r io.Reader, conns map[uint32]*RecordConnection) (Record, error) {
 	header, err := decodeHeader(r)
 	if err != nil {
 		return nil, err
@@ -131,11 +136,15 @@ func decodeRecord(r io.Reader) (Record, error) {
 	case OpBagHeader:
 		return NewRecordBagHeader(&base)
 	case OpChunk:
-		return NewRecordChunk(&base)
+		return NewRecordChunk(&base, conns)
 	case OpConnection:
-		return NewRecordConnection(&base)
+		record, err := NewRecordConnection(&base)
+		if err == nil {
+			conns[record.Conn] = record
+		}
+		return record, err
 	case OpMessageData:
-		return NewRecordMessageData(&base)
+		return NewRecordMessageData(&base, conns)
 	case OpIndexData:
 		return NewRecordIndexData(&base)
 	case OpChunkInfo:

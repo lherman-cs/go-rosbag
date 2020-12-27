@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"time"
 
@@ -130,7 +131,7 @@ type RecordChunk struct {
 	chunkDataDecoder *Decoder
 }
 
-func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
+func NewRecordChunk(base *RecordBase, conns map[uint32]*RecordConnection) (*RecordChunk, error) {
 	record := RecordChunk{
 		RecordBase: base,
 	}
@@ -160,7 +161,7 @@ func NewRecordChunk(base *RecordBase) (*RecordChunk, error) {
 		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2, lz4]")
 	}
 
-	record.chunkDataDecoder = newDecoder(uncompressedReader, false, false)
+	record.chunkDataDecoder = newDecoder(uncompressedReader, false, false, conns)
 	return &record, err
 }
 
@@ -177,8 +178,9 @@ func (record *RecordChunk) Next() (Record, error) {
 
 type RecordConnection struct {
 	*RecordBase
-	Conn  uint32
-	Topic string
+	Conn             uint32
+	Topic            string
+	connectionHeader *ConnectionHeader
 }
 
 func NewRecordConnection(base *RecordBase) (*RecordConnection, error) {
@@ -199,11 +201,16 @@ func NewRecordConnection(base *RecordBase) (*RecordConnection, error) {
 		return true
 	})
 
+	if err != nil {
+		return nil, err
+	}
+
+	record.connectionHeader, err = record.readConnectionHeader()
 	return &record, err
 }
 
-// ConnectionHeader reads the underlying data and decode it to ConnectionHeader
-func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
+// readConnectionHeader reads the underlying data and decode it to ConnectionHeader
+func (record *RecordConnection) readConnectionHeader() (*ConnectionHeader, error) {
 	header := make([]byte, record.data.N)
 	_, err := io.ReadFull(record.data, header)
 	if err != nil {
@@ -226,6 +233,10 @@ func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
 	return &connectionHeader, err
 }
 
+func (record *RecordConnection) ConnectionHeader() *ConnectionHeader {
+	return record.connectionHeader
+}
+
 func (record *RecordConnection) String() string {
 	return fmt.Sprintf(`
 conn  : %d
@@ -235,17 +246,17 @@ topic : %s
 
 type RecordMessageData struct {
 	*RecordBase
-	Conn uint32
+	Conn *RecordConnection
 	Time time.Time
 }
 
-func NewRecordMessageData(base *RecordBase) (*RecordMessageData, error) {
+func NewRecordMessageData(base *RecordBase, conns map[uint32]*RecordConnection) (*RecordMessageData, error) {
 	record := RecordMessageData{
 		RecordBase: base,
 	}
 	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
 		if bytes.Equal(key, []byte("conn")) {
-			record.Conn = endian.Uint32(value)
+			record.Conn = conns[endian.Uint32(value)]
 		} else if bytes.Equal(key, []byte("time")) {
 			record.Time = extractTime(value)
 		} else if bytes.Equal(key, []byte("op")) {
@@ -258,6 +269,15 @@ func NewRecordMessageData(base *RecordBase) (*RecordMessageData, error) {
 	})
 
 	return &record, err
+}
+
+func (record *RecordMessageData) UnmarshallTo(v interface{}) error {
+	hdr := record.Conn.connectionHeader
+	raw, err := ioutil.ReadAll(record.data)
+	if err != nil {
+		return err
+	}
+	return decodeMessageData(&hdr.MessageDefinition, raw, v)
 }
 
 func (record *RecordMessageData) String() string {
