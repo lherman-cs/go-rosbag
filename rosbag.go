@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"time"
 
@@ -273,7 +272,8 @@ func NewRecordMessageData(base *RecordBase, conns map[uint32]*RecordConnection) 
 
 func (record *RecordMessageData) UnmarshallTo(v map[string]interface{}) error {
 	hdr := record.Conn.connectionHeader
-	raw, err := ioutil.ReadAll(record.data)
+	raw := make([]byte, record.data.N)
+	_, err := io.ReadFull(record.data, raw)
 	if err != nil {
 		return err
 	}
