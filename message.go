@@ -282,11 +282,7 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 			for i := 0; i < length; i++ {
 				switch field.Type {
 				case MessageFieldTypeBool:
-					var isTrue bool
-					if curRaw[0] != 0 {
-						isTrue = true
-					}
-					newValue = isTrue
+					newValue = curRaw[0] != 0
 					curRaw = curRaw[1:]
 				case MessageFieldTypeInt8:
 					newValue = int8(curRaw[0])
