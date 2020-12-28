@@ -114,7 +114,7 @@ func TestDecodeRecord(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			raw := testCase.Raw()
-			actual, err := decodeRecord(bytesToLimitedReader(raw))
+			actual, err := decodeRecord(bytesToLimitedReader(raw), nil)
 
 			if testCase.Fail && err == nil {
 				t.Fatal("expected to fail")

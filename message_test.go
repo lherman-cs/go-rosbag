@@ -55,7 +55,7 @@ func addData(b []byte, v interface{}) []byte {
 	case time.Duration:
 		buf = make([]byte, 8)
 		sec := v / time.Second
-		nsec := sec * time.Second
+		nsec := v % (time.Second / time.Nanosecond)
 		endian.PutUint32(buf, uint32(sec))
 		endian.PutUint32(buf[4:], uint32(nsec))
 	}
@@ -111,7 +111,7 @@ uint8 age
 		Duration time.Duration `rosbag:"duration"`
 	}
 
-	expected := Data{
+	structExpected := Data{
 		Bool:    true,
 		Int8:    math.MinInt8,
 		Uint8:   math.MaxUint8,
@@ -133,31 +133,56 @@ uint8 age
 		},
 		String:   "lukas",
 		Time:     time.Unix(1, 10),
-		Duration: time.Since(time.Unix(1, 10)),
+		Duration: time.Second + time.Nanosecond,
+	}
+
+	mapExpected := map[string]interface{}{
+		"bool":    true,
+		"int8":    structExpected.Int8,
+		"uint8":   structExpected.Uint8,
+		"int16":   structExpected.Int16,
+		"uint16":  structExpected.Uint16,
+		"int32":   structExpected.Int32,
+		"uint32":  structExpected.Uint32,
+		"int64":   structExpected.Int64,
+		"uint64":  structExpected.Uint64,
+		"float32": structExpected.Float32,
+		"float64": structExpected.Float64,
+		"person": map[string]interface{}{
+			"age": structExpected.Person.Age,
+		},
+		"pixel": []interface{}{structExpected.Pixel[0], structExpected.Pixel[1], structExpected.Pixel[2]},
+		"children": []interface{}{
+			map[string]interface{}{"age": structExpected.Children[0].Age},
+			map[string]interface{}{"age": structExpected.Children[1].Age},
+		},
+		"string":   structExpected.String,
+		"time":     structExpected.Time,
+		"duration": structExpected.Duration,
 	}
 
 	var msgDataRaw []byte
-	msgDataRaw = addData(msgDataRaw, expected.Bool)
-	msgDataRaw = addData(msgDataRaw, expected.Int8)
-	msgDataRaw = addData(msgDataRaw, expected.Uint8)
-	msgDataRaw = addData(msgDataRaw, expected.Int16)
-	msgDataRaw = addData(msgDataRaw, expected.Uint16)
-	msgDataRaw = addData(msgDataRaw, expected.Int32)
-	msgDataRaw = addData(msgDataRaw, expected.Uint32)
-	msgDataRaw = addData(msgDataRaw, expected.Int64)
-	msgDataRaw = addData(msgDataRaw, expected.Uint64)
-	msgDataRaw = addData(msgDataRaw, expected.Float32)
-	msgDataRaw = addData(msgDataRaw, expected.Float64)
-	msgDataRaw = addData(msgDataRaw, expected.Person.Age)
-	msgDataRaw = addData(msgDataRaw, expected.Pixel[0])
-	msgDataRaw = addData(msgDataRaw, expected.Pixel[1])
-	msgDataRaw = addData(msgDataRaw, expected.Pixel[2])
+	msgDataRaw = addData(msgDataRaw, structExpected.Bool)
+	msgDataRaw = addData(msgDataRaw, structExpected.Int8)
+	msgDataRaw = addData(msgDataRaw, structExpected.Uint8)
+	msgDataRaw = addData(msgDataRaw, structExpected.Int16)
+	msgDataRaw = addData(msgDataRaw, structExpected.Uint16)
+	msgDataRaw = addData(msgDataRaw, structExpected.Int32)
+	msgDataRaw = addData(msgDataRaw, structExpected.Uint32)
+	msgDataRaw = addData(msgDataRaw, structExpected.Int64)
+	msgDataRaw = addData(msgDataRaw, structExpected.Uint64)
+	msgDataRaw = addData(msgDataRaw, structExpected.Float32)
+	msgDataRaw = addData(msgDataRaw, structExpected.Float64)
+	msgDataRaw = addData(msgDataRaw, structExpected.Person.Age)
+	msgDataRaw = addData(msgDataRaw, structExpected.Pixel[0])
+	msgDataRaw = addData(msgDataRaw, structExpected.Pixel[1])
+	msgDataRaw = addData(msgDataRaw, structExpected.Pixel[2])
 	msgDataRaw = addData(msgDataRaw, uint32(2))
-	msgDataRaw = addData(msgDataRaw, expected.Children[0].Age)
-	msgDataRaw = addData(msgDataRaw, expected.Children[1].Age)
-	msgDataRaw = addData(msgDataRaw, expected.String)
-	msgDataRaw = addData(msgDataRaw, expected.Time)
-	msgDataRaw = addData(msgDataRaw, expected.Duration)
+	msgDataRaw = addData(msgDataRaw, structExpected.Children[0].Age)
+	msgDataRaw = addData(msgDataRaw, structExpected.Children[1].Age)
+	msgDataRaw = addData(msgDataRaw, structExpected.String)
+	msgDataRaw = addData(msgDataRaw, structExpected.Time)
+	msgDataRaw = addData(msgDataRaw, structExpected.Duration)
 
 	var msgDef MessageDefinition
 	err := msgDef.unmarshall(msgDefRaw)
@@ -165,13 +190,42 @@ uint8 age
 		t.Fatal(err)
 	}
 
-	var data Data
-	err = decodeMessageData(&msgDef, msgDataRaw, &data)
+	mapData := make(map[string]interface{})
+	err = decodeMessageData(&msgDef, msgDataRaw, mapData)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(&expected, &data) {
-		t.Fatalf("invalid parsed data.\n\nExpected:\n\n%+v\n\nActual:\n\n%+v", expected, data)
+	if !reflect.DeepEqual(mapExpected, mapData) {
+		t.Fatalf("invalid parsed data.\n\nExpected:\n\n%#v\n\nActual:\n\n%#v", mapExpected, mapData)
+	}
+}
+
+func BenchmarkDecodeMessageData(b *testing.B) {
+	b.StopTimer()
+	msgDefRaw := []byte(`
+uint8[] pixels
+`)
+
+	res := 1920 * 1080
+	var msgDataRaw []byte
+	msgDataRaw = addData(msgDataRaw, uint32(res))
+	for i := 0; i < res; i++ {
+		msgDataRaw = addData(msgDataRaw, uint8(i))
+	}
+
+	var msgDef MessageDefinition
+	err := msgDef.unmarshall(msgDefRaw)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		data := make(map[string]interface{})
+		err = decodeMessageData(&msgDef, msgDataRaw, data)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }

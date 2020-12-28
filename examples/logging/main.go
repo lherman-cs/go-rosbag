@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"os"
+	"runtime/pprof"
 
 	"github.com/lherman-cs/go-rosbag"
 )
@@ -15,6 +15,12 @@ func must(err error) {
 }
 
 func main() {
+	cpu, err := os.Create("cpu.out")
+	must(err)
+	defer cpu.Close()
+
+	must(pprof.StartCPUProfile(cpu))
+	defer pprof.StopCPUProfile()
 	f, err := os.Open("example.bag")
 	must(err)
 	defer f.Close()
@@ -61,6 +67,5 @@ func handleMessage(message *rosbag.RecordMessageData) error {
 	data := make(map[string]interface{})
 	err := message.UnmarshallTo(data)
 	must(err)
-	fmt.Println(data)
 	return err
 }

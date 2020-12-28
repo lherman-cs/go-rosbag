@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 )
@@ -78,7 +77,6 @@ type MessageDefinition struct {
 func (def *MessageDefinition) unmarshall(b []byte) error {
 	var err error
 	lines := bytes.Split(b, []byte("\n"))
-	fmt.Println(string(b))
 
 	for _, line := range lines {
 		// find comments
@@ -213,37 +211,14 @@ func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
 	return nil
 }
 
-func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) error {
-	var visit func(*MessageDefinition, reflect.Value, []byte) ([]byte, error)
-	visit = func(curDef *MessageDefinition, curValue reflect.Value, curRaw []byte) ([]byte, error) {
+func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]interface{}) error {
+	var visit func(*MessageDefinition, map[string]interface{}, []byte) ([]byte, error)
+	visit = func(curDef *MessageDefinition, curValue map[string]interface{}, curRaw []byte) ([]byte, error) {
 		var err error
-		if curValue.Kind() == reflect.Ptr {
-			curValue = reflect.Indirect(curValue)
-		}
-
-		lookupMap := make(map[string]reflect.Value)
-		curType := curValue.Type()
-		if curType.Kind() == reflect.Struct {
-			for i := 0; i < curType.NumField(); i++ {
-				field := curType.Field(i)
-				tag, ok := field.Tag.Lookup(rosbagStructTag)
-				if !ok {
-					tag = field.Name
-				}
-				lookupMap[tag] = curValue.Field(i)
-			}
-		}
-
-		fmt.Println(curDef)
-		fmt.Println(curDef.Fields)
 		for _, field := range curDef.Fields {
+			var newValue interface{}
 			// TODO: this is const, need to parse this
 			if len(field.Value) != 0 {
-				continue
-			}
-
-			fieldValue, ok := lookupMap[field.Name]
-			if !ok && curType.Kind() == reflect.Struct {
 				continue
 			}
 
@@ -258,94 +233,83 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) err
 				}
 			}
 
-			for i := 0; i < length; i++ {
-				var newValue reflect.Value
+			values := make([]interface{}, length)
 
+			for i := 0; i < length; i++ {
 				switch field.Type {
 				case "bool":
 					var isTrue bool
 					if curRaw[0] != 0 {
 						isTrue = true
 					}
-					newValue = reflect.ValueOf(isTrue)
+					newValue = isTrue
 					curRaw = curRaw[1:]
 				case "byte":
 					fallthrough
 				case "int8":
-					newValue = reflect.ValueOf(int8(curRaw[0]))
+					newValue = int8(curRaw[0])
 					curRaw = curRaw[1:]
 				case "char":
 					fallthrough
 				case "uint8":
-					newValue = reflect.ValueOf(uint8(curRaw[0]))
+					newValue = uint8(curRaw[0])
 					curRaw = curRaw[1:]
 				case "int16":
-					newValue = reflect.ValueOf(int16(endian.Uint16(curRaw)))
+					newValue = int16(endian.Uint16(curRaw))
 					curRaw = curRaw[2:]
 				case "uint16":
-					newValue = reflect.ValueOf(endian.Uint16(curRaw))
+					newValue = endian.Uint16(curRaw)
 					curRaw = curRaw[2:]
 				case "int32":
-					newValue = reflect.ValueOf(int32(endian.Uint32(curRaw)))
+					newValue = int32(endian.Uint32(curRaw))
 					curRaw = curRaw[4:]
 				case "uint32":
-					newValue = reflect.ValueOf(endian.Uint32(curRaw))
+					newValue = endian.Uint32(curRaw)
 					curRaw = curRaw[4:]
 				case "int64":
-					newValue = reflect.ValueOf(int64(endian.Uint64(curRaw)))
+					newValue = int64(endian.Uint64(curRaw))
 					curRaw = curRaw[8:]
 				case "uint64":
-					newValue = reflect.ValueOf(endian.Uint64(curRaw))
+					newValue = endian.Uint64(curRaw)
 					curRaw = curRaw[8:]
 				case "float32":
-					newValue = reflect.ValueOf(math.Float32frombits(endian.Uint32(curRaw)))
+					newValue = math.Float32frombits(endian.Uint32(curRaw))
 					curRaw = curRaw[4:]
 				case "float64":
-					newValue = reflect.ValueOf(math.Float64frombits(endian.Uint64(curRaw)))
+					newValue = math.Float64frombits(endian.Uint64(curRaw))
 					curRaw = curRaw[8:]
 				case "string":
 					length := endian.Uint32(curRaw)
 					curRaw = curRaw[4:]
-					newValue = reflect.ValueOf(string(curRaw[:length]))
+					newValue = string(curRaw[:length])
 					curRaw = curRaw[length:]
 				case "time":
-					newValue = reflect.ValueOf(extractTime(curRaw))
+					newValue = extractTime(curRaw)
 					curRaw = curRaw[8:]
 				case "duration":
-					newValue = reflect.ValueOf(extractDuration(curRaw))
+					newValue = extractDuration(curRaw)
 					curRaw = curRaw[8:]
 				default:
-					if curType.Kind() == reflect.Struct {
-						if field.IsArray {
-							newValue = reflect.New(reflect.TypeOf(fieldValue.Interface()).Elem())
-						} else {
-							newValue = reflect.New(fieldValue.Type())
-						}
-						newValue = reflect.Indirect(newValue)
-					} else {
-						newValue = reflect.ValueOf(make(map[string]interface{}))
-					}
-
-					curRaw, err = visit(findComplexMsg(def, field.Type), newValue, curRaw)
+					newValueReal := make(map[string]interface{})
+					newValue = newValueReal
+					curRaw, err = visit(findComplexMsg(def, field.Type), newValueReal, curRaw)
 					if err != nil {
 						return nil, err
 					}
 				}
 
-				if ok {
-					if field.IsArray {
-						fieldValue.Set(reflect.Append(fieldValue, newValue))
-					} else {
-						fieldValue.Set(newValue)
-					}
-				} else {
-					curValue.SetMapIndex(reflect.ValueOf(field.Name), newValue)
-				}
+				values[i] = newValue
+			}
+
+			if field.IsArray {
+				curValue[field.Name] = values
+			} else {
+				curValue[field.Name] = values[0]
 			}
 		}
 		return curRaw, nil
 	}
 
-	_, err := visit(def, reflect.ValueOf(data), raw)
+	_, err := visit(def, data, raw)
 	return err
 }

@@ -271,7 +271,7 @@ func NewRecordMessageData(base *RecordBase, conns map[uint32]*RecordConnection) 
 	return &record, err
 }
 
-func (record *RecordMessageData) UnmarshallTo(v interface{}) error {
+func (record *RecordMessageData) UnmarshallTo(v map[string]interface{}) error {
 	hdr := record.Conn.connectionHeader
 	raw, err := ioutil.ReadAll(record.data)
 	if err != nil {
@@ -284,7 +284,7 @@ func (record *RecordMessageData) String() string {
 	return fmt.Sprintf(`
 conn : %d
 time : %s
-`, record.Conn, record.Time)
+`, record.Conn.Conn, record.Time)
 }
 
 type RecordIndexData struct {
