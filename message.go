@@ -12,11 +12,11 @@ const (
 	rosbagStructTag = "rosbag"
 )
 
-/* TODO: Add this later to speed up a bit message decoder
 type MessageFieldType uint8
 
 const (
-	MessageFieldTypeBool MessageFieldType = iota + 1
+	MessageFieldTypeComplex MessageFieldType = iota
+	MessageFieldTypeBool
 	MessageFieldTypeInt8
 	MessageFieldTypeUint8
 	MessageFieldTypeInt16
@@ -32,21 +32,58 @@ const (
 	MessageFieldTypeDuration
 )
 
+func newMessageFieldType(b []byte) MessageFieldType {
+	if bytes.Equal(b, []byte("byte")) {
+		return MessageFieldTypeInt8
+	}
+
+	if bytes.Equal(b, []byte("char")) {
+		return MessageFieldTypeUint8
+	}
+
+	for t := MessageFieldTypeBool; t <= MessageFieldTypeDuration; t++ {
+		if bytes.Equal(b, []byte(t.String())) {
+			return t
+		}
+	}
+
+	return MessageFieldTypeComplex
+}
+
 func (t MessageFieldType) String() string {
 	switch t {
 	case MessageFieldTypeBool:
 		return "bool"
 	case MessageFieldTypeInt8:
 		return "int8"
+	case MessageFieldTypeUint8:
+		return "uint8"
 	case MessageFieldTypeInt16:
 		return "int16"
+	case MessageFieldTypeUint16:
+		return "uint16"
 	case MessageFieldTypeInt32:
 		return "int32"
+	case MessageFieldTypeUint32:
+		return "uint32"
+	case MessageFieldTypeInt64:
+		return "int64"
+	case MessageFieldTypeUint64:
+		return "uint64"
+	case MessageFieldTypeFloat32:
+		return "float32"
+	case MessageFieldTypeFloat64:
+		return "float64"
+	case MessageFieldTypeString:
+		return "string"
+	case MessageFieldTypeTime:
+		return "time"
+	case MessageFieldTypeDuration:
+		return "duration"
 	default:
 		return "invalid"
 	}
 }
-*/
 
 type ConnectionHeader struct {
 	Topic             string
@@ -69,7 +106,7 @@ message_definition :
 
 // MessageDefinition is defined here, http://wiki.ros.org/msg
 type MessageDefinition struct {
-	Type        string
+	Type        []byte
 	Fields      []MessageFieldDefinition
 	ComplexMsgs []MessageDefinition
 }
@@ -103,7 +140,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		if idx != -1 {
 			idx = bytes.LastIndexByte(line, ' ')
 			msgType := line[idx+1:]
-			def.ComplexMsgs = append(def.ComplexMsgs, MessageDefinition{Type: string(msgType)})
+			def.ComplexMsgs = append(def.ComplexMsgs, MessageDefinition{Type: msgType})
 			continue
 		}
 
@@ -143,11 +180,15 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		}
 
 		fieldDef := MessageFieldDefinition{
-			Type:      string(fieldType),
-			Name:      string(fieldName),
+			Type:      newMessageFieldType(fieldType),
+			Name:      fieldName,
 			IsArray:   isArray,
 			ArraySize: arraySize,
 			Value:     constantValue,
+		}
+
+		if fieldDef.Type == MessageFieldTypeComplex {
+			fieldDef.MsgType = fieldType
 		}
 		complexMsg.Fields = append(complexMsg.Fields, fieldDef)
 	}
@@ -158,7 +199,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 func (def *MessageDefinition) String() string {
 	var sb strings.Builder
 
-	if def.Type != "" {
+	if len(def.Type) > 0 {
 		sb.WriteString(fmt.Sprintf("MSG: %s\n", def.Type))
 	}
 
@@ -174,17 +215,20 @@ func (def *MessageDefinition) String() string {
 }
 
 type MessageFieldDefinition struct {
-	Type    string
-	Name    string
+	Type    MessageFieldType
+	Name    []byte
 	IsArray bool
 	// ArraySize is only used when the field is a fixed-size array
 	ArraySize int
 	// Value is an optional field. It's only being used for constants
 	Value []byte
+	// MsgType is only being used when type is complex. This defines the custom
+	// message type.
+	MsgType []byte
 }
 
 func (def *MessageFieldDefinition) String() string {
-	fieldType := def.Type
+	fieldType := def.Type.String()
 	if def.IsArray {
 		if def.ArraySize > 0 {
 			fieldType += fmt.Sprintf("[%d]", def.ArraySize)
@@ -202,9 +246,9 @@ func (def *MessageFieldDefinition) String() string {
 
 // findComplexMsg iterates ComplexMsgs inside def, and find for msgType. msgType can have an optional
 // package name as prefix.
-func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
+func findComplexMsg(def *MessageDefinition, msgType []byte) *MessageDefinition {
 	for _, cur := range def.ComplexMsgs {
-		if strings.HasSuffix(cur.Type, msgType) {
+		if bytes.HasSuffix(cur.Type, msgType) {
 			return &cur
 		}
 	}
@@ -237,62 +281,58 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 
 			for i := 0; i < length; i++ {
 				switch field.Type {
-				case "bool":
+				case MessageFieldTypeBool:
 					var isTrue bool
 					if curRaw[0] != 0 {
 						isTrue = true
 					}
 					newValue = isTrue
 					curRaw = curRaw[1:]
-				case "byte":
-					fallthrough
-				case "int8":
+				case MessageFieldTypeInt8:
 					newValue = int8(curRaw[0])
 					curRaw = curRaw[1:]
-				case "char":
-					fallthrough
-				case "uint8":
+				case MessageFieldTypeUint8:
 					newValue = uint8(curRaw[0])
 					curRaw = curRaw[1:]
-				case "int16":
+				case MessageFieldTypeInt16:
 					newValue = int16(endian.Uint16(curRaw))
 					curRaw = curRaw[2:]
-				case "uint16":
+				case MessageFieldTypeUint16:
 					newValue = endian.Uint16(curRaw)
 					curRaw = curRaw[2:]
-				case "int32":
+				case MessageFieldTypeInt32:
 					newValue = int32(endian.Uint32(curRaw))
 					curRaw = curRaw[4:]
-				case "uint32":
+				case MessageFieldTypeUint32:
 					newValue = endian.Uint32(curRaw)
 					curRaw = curRaw[4:]
-				case "int64":
+				case MessageFieldTypeInt64:
 					newValue = int64(endian.Uint64(curRaw))
 					curRaw = curRaw[8:]
-				case "uint64":
+				case MessageFieldTypeUint64:
 					newValue = endian.Uint64(curRaw)
 					curRaw = curRaw[8:]
-				case "float32":
+				case MessageFieldTypeFloat32:
 					newValue = math.Float32frombits(endian.Uint32(curRaw))
 					curRaw = curRaw[4:]
-				case "float64":
+				case MessageFieldTypeFloat64:
 					newValue = math.Float64frombits(endian.Uint64(curRaw))
 					curRaw = curRaw[8:]
-				case "string":
+				case MessageFieldTypeString:
 					length := endian.Uint32(curRaw)
 					curRaw = curRaw[4:]
 					newValue = string(curRaw[:length])
 					curRaw = curRaw[length:]
-				case "time":
+				case MessageFieldTypeTime:
 					newValue = extractTime(curRaw)
 					curRaw = curRaw[8:]
-				case "duration":
+				case MessageFieldTypeDuration:
 					newValue = extractDuration(curRaw)
 					curRaw = curRaw[8:]
-				default:
+				case MessageFieldTypeComplex:
 					newValueReal := make(map[string]interface{})
 					newValue = newValueReal
-					curRaw, err = visit(findComplexMsg(def, field.Type), newValueReal, curRaw)
+					curRaw, err = visit(findComplexMsg(def, field.MsgType), newValueReal, curRaw)
 					if err != nil {
 						return nil, err
 					}
@@ -302,9 +342,9 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 			}
 
 			if field.IsArray {
-				curValue[field.Name] = values
+				curValue[string(field.Name)] = values
 			} else {
-				curValue[field.Name] = values[0]
+				curValue[string(field.Name)] = values[0]
 			}
 		}
 		return curRaw, nil
