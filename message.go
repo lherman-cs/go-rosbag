@@ -2,21 +2,36 @@ package rosbag
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math"
+	"reflect"
 	"strconv"
 	"strings"
+	"unsafe"
 )
 
 const (
 	rosbagStructTag = "rosbag"
 )
 
+var hostEndian binary.ByteOrder
+
+func init() {
+	switch v := *(*uint16)(unsafe.Pointer(&([]byte{0x12, 0x34}[0]))); v {
+	case 0x1234:
+		hostEndian = binary.BigEndian
+	case 0x3412:
+		hostEndian = binary.LittleEndian
+	default:
+		panic(fmt.Sprintf("failed to determine host endianness: %x", v))
+	}
+}
+
 type MessageFieldType uint8
 
 const (
-	MessageFieldTypeComplex MessageFieldType = iota
-	MessageFieldTypeBool
+	MessageFieldTypeBool MessageFieldType = iota + 1
 	MessageFieldTypeInt8
 	MessageFieldTypeUint8
 	MessageFieldTypeInt16
@@ -30,6 +45,7 @@ const (
 	MessageFieldTypeString
 	MessageFieldTypeTime
 	MessageFieldTypeDuration
+	MessageFieldTypeComplex
 )
 
 func newMessageFieldType(b []byte) MessageFieldType {
@@ -277,6 +293,11 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 				}
 			}
 
+			// Fast path with unsafe, the endianness MUST BE the same
+			if field.IsArray && field.Type <= MessageFieldTypeFloat64 && endian == hostEndian {
+				data[string(field.Name)], curRaw = decodeArray(curRaw, field.Type, length)
+				continue
+			}
 			values := make([]interface{}, length)
 
 			for i := 0; i < length; i++ {
@@ -348,4 +369,97 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 
 	_, err := visit(def, data, raw)
 	return err
+}
+
+func decodeArray(raw []byte, fieldType MessageFieldType, length int) (interface{}, []byte) {
+	switch fieldType {
+	case MessageFieldTypeBool:
+		var arr []bool
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeInt8:
+		var arr []int8
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeUint8:
+		var arr []uint8
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeInt16:
+		var arr []int16
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeUint16:
+		var arr []uint16
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeInt32:
+		var arr []int32
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeUint32:
+		var arr []uint32
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeInt64:
+		var arr []int64
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeUint64:
+		var arr []uint64
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeFloat32:
+		var arr []float32
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	case MessageFieldTypeFloat64:
+		var arr []float64
+		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
+
+		header.Data = uintptr(unsafe.Pointer(&raw[0]))
+		header.Cap = length
+		header.Len = length
+		return arr, raw[length:]
+	}
+	return nil, raw
 }

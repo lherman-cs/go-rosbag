@@ -151,7 +151,7 @@ uint8 age
 		"person": map[string]interface{}{
 			"age": structExpected.Person.Age,
 		},
-		"pixel": []interface{}{structExpected.Pixel[0], structExpected.Pixel[1], structExpected.Pixel[2]},
+		"pixel": []uint8{structExpected.Pixel[0], structExpected.Pixel[1], structExpected.Pixel[2]},
 		"children": []interface{}{
 			map[string]interface{}{"age": structExpected.Children[0].Age},
 			map[string]interface{}{"age": structExpected.Children[1].Age},
