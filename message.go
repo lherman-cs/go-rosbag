@@ -122,7 +122,7 @@ message_definition :
 
 // MessageDefinition is defined here, http://wiki.ros.org/msg
 type MessageDefinition struct {
-	Type        []byte
+	Type        string
 	Fields      []MessageFieldDefinition
 	ComplexMsgs []MessageDefinition
 }
@@ -156,7 +156,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		if idx != -1 {
 			idx = bytes.LastIndexByte(line, ' ')
 			msgType := line[idx+1:]
-			def.ComplexMsgs = append(def.ComplexMsgs, MessageDefinition{Type: msgType})
+			def.ComplexMsgs = append(def.ComplexMsgs, MessageDefinition{Type: string(msgType)})
 			continue
 		}
 
@@ -197,14 +197,14 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 
 		fieldDef := MessageFieldDefinition{
 			Type:      newMessageFieldType(fieldType),
-			Name:      fieldName,
+			Name:      string(fieldName),
 			IsArray:   isArray,
 			ArraySize: arraySize,
 			Value:     constantValue,
 		}
 
 		if fieldDef.Type == MessageFieldTypeComplex {
-			fieldDef.MsgType = fieldType
+			fieldDef.MsgType = string(fieldType)
 		}
 		complexMsg.Fields = append(complexMsg.Fields, fieldDef)
 	}
@@ -232,7 +232,7 @@ func (def *MessageDefinition) String() string {
 
 type MessageFieldDefinition struct {
 	Type    MessageFieldType
-	Name    []byte
+	Name    string
 	IsArray bool
 	// ArraySize is only used when the field is a fixed-size array
 	ArraySize int
@@ -240,7 +240,7 @@ type MessageFieldDefinition struct {
 	Value []byte
 	// MsgType is only being used when type is complex. This defines the custom
 	// message type.
-	MsgType []byte
+	MsgType string
 }
 
 func (def *MessageFieldDefinition) String() string {
@@ -262,9 +262,9 @@ func (def *MessageFieldDefinition) String() string {
 
 // findComplexMsg iterates ComplexMsgs inside def, and find for msgType. msgType can have an optional
 // package name as prefix.
-func findComplexMsg(def *MessageDefinition, msgType []byte) *MessageDefinition {
+func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
 	for _, cur := range def.ComplexMsgs {
-		if bytes.HasSuffix(cur.Type, msgType) {
+		if strings.HasSuffix(cur.Type, msgType) {
 			return &cur
 		}
 	}
