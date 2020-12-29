@@ -3,7 +3,6 @@ package rosbag
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"reflect"
 	"testing"
 )
@@ -55,7 +54,7 @@ func TestDecodeRecord(t *testing.T) {
 		Name   string
 		Raw    func() []byte
 		Fail   bool
-		Expect func([]byte) Record
+		Expect func([]byte) *Record
 	}{
 		{
 			Name: "Not enough data for header len",
@@ -96,15 +95,13 @@ func TestDecodeRecord(t *testing.T) {
 				endian.PutUint32(raw[12:], 1)
 				return raw
 			},
-			Expect: func(b []byte) Record {
-				record, err := NewRecordBagHeader(&RecordBase{
-					header: b[4:12],
-					data:   bytesToLimitedReader(b[16:17]),
-				})
-
-				if err != nil {
-					t.Fatal(err)
+			Expect: func(b []byte) *Record {
+				record := &Record{
+					HeaderLen: 8,
+					DataLen:   1,
+					Raw:       b,
 				}
+
 				return record
 			},
 		},
@@ -114,12 +111,15 @@ func TestDecodeRecord(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			raw := testCase.Raw()
-			actual, err := decodeRecord(bytesToLimitedReader(raw), nil)
+			var actual Record
+
+			decoder := NewDecoder(bytes.NewReader(raw))
+			decoder.checkedVersion = true
+			_, err := decoder.decodeRecord(decoder.reader, &actual)
 
 			if testCase.Fail && err == nil {
 				t.Fatal("expected to fail")
 			} else if !testCase.Fail && err != nil {
-				t.Log("here")
 				t.Fatal("expected to succeed:", err)
 			}
 
@@ -129,18 +129,8 @@ func TestDecodeRecord(t *testing.T) {
 					t.Fatalf("expected record header to be\n\n%v\n\nbut got\n\n%v\n\n", expected.Header(), actual.Header())
 				}
 
-				actualData, err := ioutil.ReadAll(actual.Data())
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				expectedData, err := ioutil.ReadAll(expected.Data())
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				if !reflect.DeepEqual(actualData, expectedData) {
-					t.Fatalf("expected record data to be\n\n%v\n\nbut got\n\n%v\n\n", expectedData, actualData)
+				if !reflect.DeepEqual(actual.Data(), expected.Data()) {
+					t.Fatalf("expected record data to be\n\n%v\n\nbut got\n\n%v\n\n", expected.Data(), actual.Data())
 				}
 			}
 		})
@@ -183,7 +173,7 @@ func TestIterateHeaderFields(t *testing.T) {
 	add := func(header, key, value []byte) []byte {
 		fieldLen := uint32(len(key) + 1 + len(value))
 		endian.PutUint32(header, fieldLen)
-		header = header[headerLenInBytes:]
+		header = header[lenInBytes:]
 		copy(header, key)
 		header = header[len(key):]
 		header[0] = headerFieldDelimiter

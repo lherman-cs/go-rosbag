@@ -1,10 +1,10 @@
 package main
 
 import (
-	"io"
 	"os"
 	"runtime/pprof"
 
+	"github.com/k0kubun/pp"
 	"github.com/lherman-cs/go-rosbag"
 )
 
@@ -26,46 +26,16 @@ func main() {
 	defer f.Close()
 
 	decoder := rosbag.NewDecoder(f)
+	var record rosbag.Record
 
 	for {
-		record, err := decoder.Next()
+		op, err := decoder.Read(&record)
 		must(err)
 
-		// fmt.Println(record)
-		chunkRecord, ok := record.(*rosbag.RecordChunk)
-		if !ok {
-			continue
-		}
-
-		must(handleChunkRecord(chunkRecord))
-	}
-}
-
-func handleChunkRecord(chunkRecord *rosbag.RecordChunk) error {
-	for {
-		record, err := chunkRecord.Next()
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			} else {
-				must(err)
-			}
-		}
-
-		switch record := record.(type) {
-		case *rosbag.RecordMessageData:
-			must(handleMessage(record))
-		}
-
-		if err != nil {
-			return err
+		if op == rosbag.OpMessageData {
+			v := make(map[string]interface{})
+			must(record.UnmarshallTo(v))
+			pp.Println(v)
 		}
 	}
-}
-
-func handleMessage(message *rosbag.RecordMessageData) error {
-	data := make(map[string]interface{})
-	err := message.UnmarshallTo(data)
-	must(err)
-	return err
 }

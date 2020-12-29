@@ -2,19 +2,19 @@ package rosbag
 
 import (
 	"bytes"
-	"compress/bzip2"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"time"
-
-	"github.com/pierrec/lz4/v4"
 )
 
 const (
 	versionFormat = "#ROSBAG V%d.%d\n"
+)
+
+var (
+	errInvalidOp                = errors.New("invalid op")
+	errNotFoundConnectionHeader = errors.New("failed to find connection header")
 )
 
 var (
@@ -60,141 +60,51 @@ type Rosbag struct {
 	Record  []Record
 }
 
-type Record interface {
-	Header() []byte
-	Data() *io.LimitedReader
-	String() string
+type Record struct {
+	// Raw contains: <header_len><header><data_len><data>
+	Raw                []byte
+	HeaderLen, DataLen uint32
+	conns              map[uint32]*ConnectionHeader
 }
 
-type RecordBase struct {
-	header []byte
-	data   *io.LimitedReader
-}
-
-func (record *RecordBase) Header() []byte {
-	return record.header
-}
-
-func (record *RecordBase) Data() *io.LimitedReader {
-	return record.data
-}
-
-func (record *RecordBase) String() string {
-	return fmt.Sprintf(`
-header_len : %d bytes
-`, len(record.header))
-}
-
-type RecordBagHeader struct {
-	*RecordBase
-	IndexPos   uint64
-	ConnCount  uint32
-	ChunkCount uint32
-}
-
-func NewRecordBagHeader(base *RecordBase) (*RecordBagHeader, error) {
-	record := RecordBagHeader{
-		RecordBase: base,
-	}
-	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
-		if bytes.Equal(key, []byte("index_pos")) {
-			record.IndexPos = endian.Uint64(value)
-		} else if bytes.Equal(key, []byte("conn_count")) {
-			record.ConnCount = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("chunk_count")) {
-			record.ChunkCount = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("op")) {
-			// explicit ignore
-		} else {
-			log.Printf("unknown %s. Ignoring...", string(key))
+func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
+	for len(header) > 0 {
+		if len(header) < lenInBytes {
+			return errors.New("missing header field length")
 		}
 
-		return true
-	})
-
-	return &record, err
-}
-
-func (record *RecordBagHeader) String() string {
-	return fmt.Sprintf(`
-index_pos   : %d
-conn_count  : %d
-chunk_count : %d
-`, record.IndexPos, record.ConnCount, record.ChunkCount)
-}
-
-type RecordChunk struct {
-	*RecordBase
-	Compression      Compression
-	Size             uint32
-	chunkDataDecoder *Decoder
-}
-
-func NewRecordChunk(base *RecordBase, conns map[uint32]*RecordConnection) (*RecordChunk, error) {
-	record := RecordChunk{
-		RecordBase: base,
-	}
-	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
-		if bytes.Equal(key, []byte("compression")) {
-			record.Compression = Compression(value)
-		} else if bytes.Equal(key, []byte("size")) {
-			record.Size = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("op")) {
-			// explicit ignore
-		} else {
-			log.Printf("unknown %s. Ignoring...", string(key))
+		fieldLen := int(endian.Uint32(header))
+		header = header[lenInBytes:]
+		if len(header) < fieldLen {
+			return fmt.Errorf("expected header field len to be %d, but got %d", fieldLen, len(header))
 		}
 
-		return true
-	})
+		i := bytes.IndexByte(header, headerFieldDelimiter)
+		if i == -1 {
+			return fmt.Errorf("invalid header field format, expected the key and value is separated by a '%c'", headerFieldDelimiter)
+		}
 
-	var uncompressedReader io.Reader
-	switch record.Compression {
-	case CompressionNone:
-		uncompressedReader = record.data
-	case CompressionBZ2:
-		uncompressedReader = bzip2.NewReader(record.data)
-	case CompressionLZ4:
-		uncompressedReader = lz4.NewReader(record.data)
-	default:
-		return nil, errors.New("unsupported compression algorithm. Available algortihms: [none, bz2, lz4]")
+		if fieldLen < i+1 {
+			return fmt.Errorf("invalid header field len, expected to be at least %d", i+1)
+		}
+
+		shouldContinue := cb(header[:i], header[i+1:fieldLen])
+		if !shouldContinue {
+			break
+		}
+		header = header[fieldLen:]
 	}
 
-	record.chunkDataDecoder = newDecoder(uncompressedReader, false, false, conns)
-	return &record, err
+	return nil
 }
 
-func (record *RecordChunk) String() string {
-	return fmt.Sprintf(`
-compression : %s
-size        : %d bytes
-`, record.Compression, record.Size)
-}
-
-func (record *RecordChunk) Next() (Record, error) {
-	return record.chunkDataDecoder.Next()
-}
-
-type RecordConnection struct {
-	*RecordBase
-	Conn             uint32
-	Topic            string
-	connectionHeader *ConnectionHeader
-}
-
-func NewRecordConnection(base *RecordBase) (*RecordConnection, error) {
-	record := RecordConnection{
-		RecordBase: base,
-	}
-	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
-		if bytes.Equal(key, []byte("conn")) {
-			record.Conn = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("topic")) {
-			record.Topic = string(value)
-		} else if bytes.Equal(key, []byte("op")) {
-			// explicit ignore
-		} else {
-			log.Printf("unknown %s. Ignoring...", string(key))
+func (record *Record) findField(key []byte) ([]byte, error) {
+	var value []byte
+	header := record.Header()
+	err := iterateHeaderFields(header, func(currentKey, currentValue []byte) bool {
+		if bytes.Equal(currentKey, key) {
+			value = currentValue
+			return false
 		}
 
 		return true
@@ -204,20 +114,144 @@ func NewRecordConnection(base *RecordBase) (*RecordConnection, error) {
 		return nil, err
 	}
 
-	record.connectionHeader, err = record.readConnectionHeader()
-	return &record, err
-}
-
-// readConnectionHeader reads the underlying data and decode it to ConnectionHeader
-func (record *RecordConnection) readConnectionHeader() (*ConnectionHeader, error) {
-	header := make([]byte, record.data.N)
-	_, err := io.ReadFull(record.data, header)
-	if err != nil {
-		return nil, err
+	if value == nil {
+		return nil, fmt.Errorf("%s field doesn't exist in the header fields", string(key))
 	}
 
+	return value, nil
+}
+
+func (record *Record) findFieldUint32(key []byte) (uint32, error) {
+	value, err := record.findField(key)
+	if err != nil {
+		return 0, err
+	}
+	return endian.Uint32(value), nil
+}
+
+func (record *Record) findFieldUint64(key []byte) (uint64, error) {
+	value, err := record.findField(key)
+	if err != nil {
+		return 0, err
+	}
+	return endian.Uint64(value), nil
+}
+
+func (record *Record) findFieldTime(key []byte) (time.Time, error) {
+	value, err := record.findField(key)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return extractTime(value), nil
+}
+
+func (record *Record) Op() (Op, error) {
+	value, err := record.findField([]byte("op"))
+	if err != nil {
+		return OpInvalid, err
+	}
+	return Op(value[0]), nil
+}
+
+func (record *Record) Header() []byte {
+	return record.Raw[lenInBytes : lenInBytes+record.HeaderLen]
+}
+
+func (record *Record) Data() []byte {
+	off := 2*lenInBytes + record.HeaderLen
+	return record.Raw[off : off+record.DataLen]
+}
+
+func (record *Record) grow(requiredSize uint32) {
+	if uint32(len(record.Raw)) < requiredSize {
+		newRaw := make([]byte, 2*requiredSize)
+		copy(newRaw, record.Raw)
+		record.Raw = newRaw
+	}
+}
+
+func (record *Record) validateOp(to Op) *Record {
+	op, err := record.Op()
+	if err != nil {
+		panic(err)
+	}
+
+	if op != to {
+		panic(errInvalidOp)
+	}
+	return record
+}
+
+type RecordBagHeader interface {
+	IndexPos() (uint64, error)
+	ConnCount() (uint32, error)
+	ChunkCount() (uint32, error)
+}
+
+func (record *Record) BagHeader() RecordBagHeader {
+	return record.validateOp(OpBagHeader)
+}
+
+func (record *Record) IndexPos() (uint64, error) {
+	return record.findFieldUint64([]byte("index_pos"))
+}
+
+func (record *Record) ConnCount() (uint32, error) {
+	return record.findFieldUint32([]byte("conn_count"))
+}
+
+func (record *Record) ChunkCount() (uint32, error) {
+	return record.findFieldUint32([]byte("chunk_count"))
+}
+
+type RecordChunk interface {
+	Compression() (Compression, error)
+	Size() (uint32, error)
+}
+
+func (record *Record) Chunk() RecordChunk {
+	return record.validateOp(OpChunk)
+}
+
+func (record *Record) Compression() (Compression, error) {
+	value, err := record.findField([]byte("compression"))
+	if err != nil {
+		return CompressionNone, err
+	}
+	return Compression(value), nil
+}
+
+func (record *Record) Size() (uint32, error) {
+	return record.findFieldUint32([]byte("size"))
+}
+
+type RecordConnection interface {
+	Conn() (uint32, error)
+	Topic() (string, error)
+	ConnectionHeader() (*ConnectionHeader, error)
+}
+
+func (record *Record) Connection() RecordConnection {
+	return record.validateOp(OpConnection)
+}
+
+func (record *Record) Conn() (uint32, error) {
+	return record.findFieldUint32([]byte("conn"))
+}
+
+func (record *Record) Topic() (string, error) {
+	value, err := record.findField([]byte("topic"))
+	if err != nil {
+		return "", err
+	}
+	return string(value), nil
+}
+
+// ConnectionHeader reads the underlying data and decode it to ConnectionHeader
+func (record *Record) ConnectionHeader() (*ConnectionHeader, error) {
+	var err error
 	var connectionHeader ConnectionHeader
-	err = iterateHeaderFields(header, func(key, value []byte) bool {
+	err = iterateHeaderFields(record.Data(), func(key, value []byte) bool {
 		if bytes.Equal(key, []byte("topic")) {
 			connectionHeader.Topic = string(value)
 		} else if bytes.Equal(key, []byte("type")) {
@@ -232,141 +266,72 @@ func (record *RecordConnection) readConnectionHeader() (*ConnectionHeader, error
 	return &connectionHeader, err
 }
 
-func (record *RecordConnection) ConnectionHeader() *ConnectionHeader {
-	return record.connectionHeader
+type RecordMessageData interface {
+	Conn() (uint32, error)
+	Time() (time.Time, error)
+	UnmarshallTo(map[string]interface{}) error
 }
 
-func (record *RecordConnection) String() string {
-	return fmt.Sprintf(`
-conn  : %d
-topic : %s
-`, record.Conn, record.Topic)
+func (record *Record) MessageData() RecordMessageData {
+	return record.validateOp(OpMessageData)
 }
 
-type RecordMessageData struct {
-	*RecordBase
-	Conn *RecordConnection
-	Time time.Time
+func (record *Record) Time() (time.Time, error) {
+	return record.findFieldTime([]byte("time"))
 }
 
-func NewRecordMessageData(base *RecordBase, conns map[uint32]*RecordConnection) (*RecordMessageData, error) {
-	record := RecordMessageData{
-		RecordBase: base,
-	}
-	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
-		if bytes.Equal(key, []byte("conn")) {
-			record.Conn = conns[endian.Uint32(value)]
-		} else if bytes.Equal(key, []byte("time")) {
-			record.Time = extractTime(value)
-		} else if bytes.Equal(key, []byte("op")) {
-			// explicit ignore
-		} else {
-			log.Printf("unknown %s. Ignoring...", string(key))
-		}
-
-		return true
-	})
-
-	return &record, err
-}
-
-func (record *RecordMessageData) UnmarshallTo(v map[string]interface{}) error {
-	hdr := record.Conn.connectionHeader
-	raw := make([]byte, record.data.N)
-	_, err := io.ReadFull(record.data, raw)
+func (record *Record) UnmarshallTo(v map[string]interface{}) error {
+	conn, err := record.Conn()
 	if err != nil {
 		return err
 	}
-	return decodeMessageData(&hdr.MessageDefinition, raw, v)
-}
 
-func (record *RecordMessageData) String() string {
-	return fmt.Sprintf(`
-conn : %d
-time : %s
-`, record.Conn.Conn, record.Time)
-}
-
-type RecordIndexData struct {
-	*RecordBase
-	Ver   uint32
-	Conn  uint32
-	Count uint32
-}
-
-func NewRecordIndexData(base *RecordBase) (*RecordIndexData, error) {
-	record := RecordIndexData{
-		RecordBase: base,
+	hdr, ok := record.conns[conn]
+	if !ok {
+		return errNotFoundConnectionHeader
 	}
-	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
-		if bytes.Equal(key, []byte("ver")) {
-			record.Ver = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("conn")) {
-			record.Conn = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("count")) {
-			record.Count = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("op")) {
-			// explicit ignore
-		} else {
-			log.Printf("unknown %s. Ignoring...", string(key))
-		}
 
-		return true
-	})
-
-	return &record, err
+	return decodeMessageData(&hdr.MessageDefinition, record.Data(), v)
 }
 
-func (record *RecordIndexData) String() string {
-	return fmt.Sprintf(`
-ver   : %d
-conn  : %d
-count : %d
-`, record.Ver, record.Conn, record.Count)
+type RecordIndexData interface {
+	Ver() (uint32, error)
+	Conn() (uint32, error)
+	Count() (uint32, error)
 }
 
-type RecordChunkInfo struct {
-	*RecordBase
-	Ver       uint32
-	ChunkPos  uint64
-	StartTime time.Time
-	EndTime   time.Time
-	Count     uint32
+func (record *Record) IndexData() RecordIndexData {
+	return record.validateOp(OpIndexData)
 }
 
-func NewRecordChunkInfo(base *RecordBase) (*RecordChunkInfo, error) {
-	record := RecordChunkInfo{
-		RecordBase: base,
-	}
-	err := iterateHeaderFields(base.header, func(key, value []byte) bool {
-		if bytes.Equal(key, []byte("ver")) {
-			record.Ver = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("chunk_pos")) {
-			record.ChunkPos = endian.Uint64(value)
-		} else if bytes.Equal(key, []byte("start_time")) {
-			record.StartTime = extractTime(value)
-		} else if bytes.Equal(key, []byte("end_time")) {
-			record.EndTime = extractTime(value)
-		} else if bytes.Equal(key, []byte("count")) {
-			record.Count = endian.Uint32(value)
-		} else if bytes.Equal(key, []byte("op")) {
-			// explicit ignore
-		} else {
-			log.Printf("unknown %s. Ignoring...", string(key))
-		}
-
-		return true
-	})
-
-	return &record, err
+func (record *Record) Ver() (uint32, error) {
+	return record.findFieldUint32([]byte("ver"))
 }
 
-func (record *RecordChunkInfo) String() string {
-	return fmt.Sprintf(`
-ver        : %d
-chunk_pos  : %d
-start_time : %s
-end_time   : %s
-count      : %d
-`, record.Ver, record.ChunkPos, record.StartTime, record.EndTime, record.Count)
+func (record *Record) Count() (uint32, error) {
+	return record.findFieldUint32([]byte("count"))
+}
+
+type RecordChunkInfo interface {
+	Ver() (uint32, error)
+	ChunkPos() (uint64, error)
+	StartTime() (time.Time, error)
+	EndTime() (time.Time, error)
+	Count() (uint32, error)
+}
+
+func (record *Record) ChunkInfo() RecordChunkInfo {
+	return record.validateOp(OpChunkInfo)
+}
+
+func (record *Record) ChunkPos() (uint64, error) {
+	return record.findFieldUint64([]byte("chunk_pos"))
+}
+
+func (record *Record) StartTime() (time.Time, error) {
+	return record.findFieldTime([]byte("start_time"))
+}
+
+func (record *Record) EndTime() (time.Time, error) {
+	return record.findFieldTime([]byte("end_time"))
 }
