@@ -123,8 +123,8 @@ message_definition :
 // MessageDefinition is defined here, http://wiki.ros.org/msg
 type MessageDefinition struct {
 	Type        string
-	Fields      []MessageFieldDefinition
-	ComplexMsgs []MessageDefinition
+	Fields      []*MessageFieldDefinition
+	ComplexMsgs []*MessageDefinition
 }
 
 func (def *MessageDefinition) unmarshall(b []byte) error {
@@ -156,7 +156,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		if idx != -1 {
 			idx = bytes.LastIndexByte(line, ' ')
 			msgType := line[idx+1:]
-			def.ComplexMsgs = append(def.ComplexMsgs, MessageDefinition{Type: string(msgType)})
+			def.ComplexMsgs = append(def.ComplexMsgs, &MessageDefinition{Type: string(msgType)})
 			continue
 		}
 
@@ -192,7 +192,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 
 		complexMsg := def
 		if len(def.ComplexMsgs) > 0 {
-			complexMsg = &def.ComplexMsgs[len(def.ComplexMsgs)-1]
+			complexMsg = def.ComplexMsgs[len(def.ComplexMsgs)-1]
 		}
 
 		fieldDef := MessageFieldDefinition{
@@ -206,7 +206,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		if fieldDef.Type == MessageFieldTypeComplex {
 			fieldDef.MsgType = string(fieldType)
 		}
-		complexMsg.Fields = append(complexMsg.Fields, fieldDef)
+		complexMsg.Fields = append(complexMsg.Fields, &fieldDef)
 	}
 
 	return nil
@@ -265,7 +265,7 @@ func (def *MessageFieldDefinition) String() string {
 func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
 	for _, cur := range def.ComplexMsgs {
 		if strings.HasSuffix(cur.Type, msgType) {
-			return &cur
+			return cur
 		}
 	}
 	return nil
