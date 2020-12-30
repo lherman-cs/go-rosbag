@@ -64,7 +64,7 @@ type Record struct {
 	// Raw contains: <header_len><header><data_len><data>
 	Raw                []byte
 	HeaderLen, DataLen uint32
-	conns              map[uint32]*ConnectionHeader
+	Conns              map[uint32]*ConnectionHeader
 }
 
 func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
@@ -286,7 +286,7 @@ func (record *Record) UnmarshallTo(v map[string]interface{}) error {
 		return err
 	}
 
-	hdr, ok := record.conns[conn]
+	hdr, ok := record.Conns[conn]
 	if !ok {
 		return errNotFoundConnectionHeader
 	}

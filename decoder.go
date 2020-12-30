@@ -94,11 +94,11 @@ func (decoder *Decoder) handleConnection(record *Record) error {
 		return err
 	}
 
-	if record.conns == nil {
-		record.conns = make(map[uint32]*ConnectionHeader)
+	if record.Conns == nil {
+		record.Conns = make(map[uint32]*ConnectionHeader)
 	}
 
-	record.conns[conn] = hdr
+	record.Conns[conn] = hdr
 	return nil
 }
 
