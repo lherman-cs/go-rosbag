@@ -17,6 +17,7 @@ const (
 var (
 	errInvalidFormat     = errors.New("invalid message format")
 	errUnresolvedMsgType = errors.New("failed to resolve a complex message type")
+	errInvalidConstType  = errors.New("invalid const type")
 )
 
 var hostEndian binary.ByteOrder
@@ -130,6 +131,54 @@ type MessageDefinition struct {
 	Fields []*MessageFieldDefinition
 }
 
+// decodeConstValue decodes raw to concrete type. Raw is expected to be in ASCII.
+// Constant types can be any builtin types except Time and Duration.
+// Reference: http://wiki.ros.org/msg#Constants
+func decodeConstValue(fieldType MessageFieldType, raw []byte) (interface{}, error) {
+	rawStr := string(raw)
+
+	switch fieldType {
+	case MessageFieldTypeBool:
+		v, err := strconv.ParseUint(rawStr, 10, 8)
+		if err != nil {
+			return nil, err
+		}
+
+		return v != 0, nil
+	case MessageFieldTypeInt8:
+		v, err := strconv.ParseInt(rawStr, 10, 8)
+		return int8(v), err
+	case MessageFieldTypeUint8:
+		v, err := strconv.ParseUint(rawStr, 10, 8)
+		return uint8(v), err
+	case MessageFieldTypeInt16:
+		v, err := strconv.ParseInt(rawStr, 10, 16)
+		return int16(v), err
+	case MessageFieldTypeUint16:
+		v, err := strconv.ParseUint(rawStr, 10, 16)
+		return uint16(v), err
+	case MessageFieldTypeInt32:
+		v, err := strconv.ParseInt(rawStr, 10, 32)
+		return int32(v), err
+	case MessageFieldTypeUint32:
+		v, err := strconv.ParseUint(rawStr, 10, 32)
+		return uint32(v), err
+	case MessageFieldTypeInt64:
+		return strconv.ParseInt(rawStr, 10, 64)
+	case MessageFieldTypeUint64:
+		return strconv.ParseUint(rawStr, 10, 64)
+	case MessageFieldTypeFloat32:
+		v, err := strconv.ParseFloat(rawStr, 32)
+		return float32(v), err
+	case MessageFieldTypeFloat64:
+		return strconv.ParseFloat(rawStr, 64)
+	case MessageFieldTypeString:
+		return rawStr, nil
+	default:
+		return nil, errInvalidConstType
+	}
+}
+
 func (def *MessageDefinition) unmarshall(b []byte) error {
 	var err error
 	lines := bytes.Split(b, []byte("\n"))
@@ -188,16 +237,18 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 
 		// detect constant
 		idx = bytes.IndexByte(fieldName, '=')
-		var constantValue []byte
+		msgFieldType := newMessageFieldType(fieldType)
+		var constantValue interface{}
 		if idx != -1 {
 			// TODO: parse this constantValue
-			constantValue = bytes.TrimSpace(fieldName[idx+1:])
+			constantValue, err = decodeConstValue(msgFieldType, bytes.TrimSpace(fieldName[idx+1:]))
 			fieldName = bytes.TrimSpace(fieldName[:idx])
+
 		}
 
 		complexMsg := complexMsgs[len(complexMsgs)-1]
 		fieldDef := MessageFieldDefinition{
-			Type:      newMessageFieldType(fieldType),
+			Type:      msgFieldType,
 			Name:      string(fieldName),
 			IsArray:   isArray,
 			ArraySize: arraySize,
@@ -243,7 +294,7 @@ type MessageFieldDefinition struct {
 	// ArraySize is only used when the field is a fixed-size array
 	ArraySize int
 	// Value is an optional field. It's only being used for constants
-	Value []byte
+	Value interface{}
 	// MsgType is only being used when type is complex. This defines the custom
 	// message type.
 	MsgType *MessageDefinition
@@ -259,11 +310,7 @@ func (def *MessageFieldDefinition) String() string {
 		}
 	}
 
-	fieldValue := ""
-	if len(def.Value) > 0 {
-		fieldValue += "=" + string(def.Value)
-	}
-	return fmt.Sprintf("%s %s%s\n", fieldType, def.Name, fieldValue)
+	return fmt.Sprintf("%s %s\n", fieldType, def.Name)
 }
 
 // findComplexMsg iterates complexMsgs, and find for msgType. msgType can have an optional
@@ -280,7 +327,10 @@ func findComplexMsg(complexMsgs []*MessageDefinition, msgType string) *MessageDe
 func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]interface{}) ([]byte, error) {
 	var err error
 	for _, field := range def.Fields {
-		if field.Type == MessageFieldTypeComplex {
+		// Const value, no need to parse, simply fill in the data
+		if field.Value != nil {
+			data[field.Name] = field.Value
+		} else if field.Type == MessageFieldTypeComplex {
 			data[field.Name], raw, err = decodeFieldComplex(field, raw)
 		} else {
 			data[field.Name], raw, err = decodeFieldBasic(field, raw)
@@ -295,11 +345,6 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 }
 
 func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
-	// TODO: this is const, need to parse this
-	if len(field.Value) != 0 {
-		return field.Value, raw, nil
-	}
-
 	var decodeFuncs map[MessageFieldType]fieldDecodeFunc
 	var length int
 	if field.IsArray {

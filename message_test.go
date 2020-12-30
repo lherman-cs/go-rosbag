@@ -82,9 +82,13 @@ Person[] children
 string string
 time time
 duration duration
+Const const
 
 MSG: custom_msgs/Person
 uint8 age
+
+MSG: custom_msgs/Const
+string name  =  lukas herman
 `)
 
 	type Person struct {
@@ -159,6 +163,9 @@ uint8 age
 		"string":   structExpected.String,
 		"time":     structExpected.Time,
 		"duration": structExpected.Duration,
+		"const": map[string]interface{}{
+			"name": "lukas herman",
+		},
 	}
 
 	var msgDataRaw []byte
