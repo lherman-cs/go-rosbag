@@ -3,9 +3,8 @@ package rosbag
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"math"
-	"reflect"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -13,6 +12,10 @@ import (
 
 const (
 	rosbagStructTag = "rosbag"
+)
+
+var (
+	errInvalidFormat = errors.New("invalid message format")
 )
 
 var hostEndian binary.ByteOrder
@@ -276,190 +279,62 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 	visit = func(curDef *MessageDefinition, curValue map[string]interface{}, curRaw []byte) ([]byte, error) {
 		var err error
 		for _, field := range curDef.Fields {
-			var newValue interface{}
 			// TODO: this is const, need to parse this
 			if len(field.Value) != 0 {
 				continue
 			}
 
-			length := 1
-			if field.IsArray {
-				if field.ArraySize != 0 {
-					length = field.ArraySize
-				} else {
-					// If the array is dynamic, the array length is defined as 4 bytes integer
-					length = int(endian.Uint16(curRaw))
-					curRaw = curRaw[4:]
-				}
-			}
+			if field.Type == MessageFieldTypeComplex {
+				if field.IsArray {
+					length, off, ok := fieldDecodeLength(curRaw, field.ArraySize)
+					if !ok {
+						return curRaw, errInvalidFormat
+					}
+					curRaw = curRaw[off:]
 
-			// Fast path with unsafe, the endianness MUST BE the same
-			if field.IsArray && field.Type <= MessageFieldTypeFloat64 && endian == hostEndian {
-				data[string(field.Name)], curRaw = decodeArray(curRaw, field.Type, length)
+					vs := make([]map[string]interface{}, length)
+					msgDef := findComplexMsg(def, field.MsgType)
+					for i := range vs {
+						v := make(map[string]interface{})
+						curRaw, err = visit(msgDef, v, curRaw)
+						if err != nil {
+							return curRaw, err
+						}
+						vs[i] = v
+					}
+					curValue[field.Name] = vs
+				} else {
+					v := make(map[string]interface{})
+					curRaw, err = visit(findComplexMsg(def, field.MsgType), v, curRaw)
+					if err != nil {
+						return curRaw, err
+					}
+					curValue[field.Name] = v
+				}
 				continue
 			}
-			values := make([]interface{}, length)
 
-			for i := 0; i < length; i++ {
-				switch field.Type {
-				case MessageFieldTypeBool:
-					newValue = curRaw[0] != 0
-					curRaw = curRaw[1:]
-				case MessageFieldTypeInt8:
-					newValue = int8(curRaw[0])
-					curRaw = curRaw[1:]
-				case MessageFieldTypeUint8:
-					newValue = uint8(curRaw[0])
-					curRaw = curRaw[1:]
-				case MessageFieldTypeInt16:
-					newValue = int16(endian.Uint16(curRaw))
-					curRaw = curRaw[2:]
-				case MessageFieldTypeUint16:
-					newValue = endian.Uint16(curRaw)
-					curRaw = curRaw[2:]
-				case MessageFieldTypeInt32:
-					newValue = int32(endian.Uint32(curRaw))
-					curRaw = curRaw[4:]
-				case MessageFieldTypeUint32:
-					newValue = endian.Uint32(curRaw)
-					curRaw = curRaw[4:]
-				case MessageFieldTypeInt64:
-					newValue = int64(endian.Uint64(curRaw))
-					curRaw = curRaw[8:]
-				case MessageFieldTypeUint64:
-					newValue = endian.Uint64(curRaw)
-					curRaw = curRaw[8:]
-				case MessageFieldTypeFloat32:
-					newValue = math.Float32frombits(endian.Uint32(curRaw))
-					curRaw = curRaw[4:]
-				case MessageFieldTypeFloat64:
-					newValue = math.Float64frombits(endian.Uint64(curRaw))
-					curRaw = curRaw[8:]
-				case MessageFieldTypeString:
-					length := endian.Uint32(curRaw)
-					curRaw = curRaw[4:]
-					newValue = string(curRaw[:length])
-					curRaw = curRaw[length:]
-				case MessageFieldTypeTime:
-					newValue = extractTime(curRaw)
-					curRaw = curRaw[8:]
-				case MessageFieldTypeDuration:
-					newValue = extractDuration(curRaw)
-					curRaw = curRaw[8:]
-				case MessageFieldTypeComplex:
-					newValueReal := make(map[string]interface{})
-					newValue = newValueReal
-					curRaw, err = visit(findComplexMsg(def, field.MsgType), newValueReal, curRaw)
-					if err != nil {
-						return nil, err
-					}
-				}
-
-				values[i] = newValue
-			}
-
+			var decodeFuncs map[MessageFieldType]fieldDecodeFunc
+			var length int
 			if field.IsArray {
-				curValue[string(field.Name)] = values
+				decodeFuncs = fieldDecodeSliceHelper
+				length = field.ArraySize
 			} else {
-				curValue[string(field.Name)] = values[0]
+				decodeFuncs = fieldDecodeBasicHelper
 			}
+
+			v, off, ok := decodeFuncs[field.Type](curRaw, length)
+			if !ok {
+				return curRaw, errInvalidFormat
+			}
+
+			curValue[field.Name] = v
+			curRaw = curRaw[off:]
 		}
+
 		return curRaw, nil
 	}
 
 	_, err := visit(def, data, raw)
 	return err
-}
-
-func decodeArray(raw []byte, fieldType MessageFieldType, length int) (interface{}, []byte) {
-	switch fieldType {
-	case MessageFieldTypeBool:
-		var arr []bool
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeInt8:
-		var arr []int8
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeUint8:
-		var arr []uint8
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeInt16:
-		var arr []int16
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeUint16:
-		var arr []uint16
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeInt32:
-		var arr []int32
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeUint32:
-		var arr []uint32
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeInt64:
-		var arr []int64
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeUint64:
-		var arr []uint64
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeFloat32:
-		var arr []float32
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	case MessageFieldTypeFloat64:
-		var arr []float64
-		header := (*reflect.SliceHeader)(unsafe.Pointer(&arr))
-
-		header.Data = uintptr(unsafe.Pointer(&raw[0]))
-		header.Cap = length
-		header.Len = length
-		return arr, raw[length:]
-	}
-	return nil, raw
 }
