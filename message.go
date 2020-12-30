@@ -15,7 +15,8 @@ const (
 )
 
 var (
-	errInvalidFormat = errors.New("invalid message format")
+	errInvalidFormat     = errors.New("invalid message format")
+	errUnresolvedMsgType = errors.New("failed to resolve a complex message type")
 )
 
 var hostEndian binary.ByteOrder
@@ -125,14 +126,15 @@ message_definition :
 
 // MessageDefinition is defined here, http://wiki.ros.org/msg
 type MessageDefinition struct {
-	Type        string
-	Fields      []*MessageFieldDefinition
-	ComplexMsgs []*MessageDefinition
+	Type   string
+	Fields []*MessageFieldDefinition
 }
 
 func (def *MessageDefinition) unmarshall(b []byte) error {
 	var err error
 	lines := bytes.Split(b, []byte("\n"))
+	unresolvedFields := make(map[*MessageFieldDefinition][]byte)
+	complexMsgs := []*MessageDefinition{def}
 
 	for _, line := range lines {
 		// find comments
@@ -159,7 +161,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		if idx != -1 {
 			idx = bytes.LastIndexByte(line, ' ')
 			msgType := line[idx+1:]
-			def.ComplexMsgs = append(def.ComplexMsgs, &MessageDefinition{Type: string(msgType)})
+			complexMsgs = append(complexMsgs, &MessageDefinition{Type: string(msgType)})
 			continue
 		}
 
@@ -193,11 +195,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 			fieldName = bytes.TrimSpace(fieldName[:idx])
 		}
 
-		complexMsg := def
-		if len(def.ComplexMsgs) > 0 {
-			complexMsg = def.ComplexMsgs[len(def.ComplexMsgs)-1]
-		}
-
+		complexMsg := complexMsgs[len(complexMsgs)-1]
 		fieldDef := MessageFieldDefinition{
 			Type:      newMessageFieldType(fieldType),
 			Name:      string(fieldName),
@@ -207,9 +205,18 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 		}
 
 		if fieldDef.Type == MessageFieldTypeComplex {
-			fieldDef.MsgType = string(fieldType)
+			unresolvedFields[&fieldDef] = fieldType
 		}
 		complexMsg.Fields = append(complexMsg.Fields, &fieldDef)
+	}
+
+	for field, msgType := range unresolvedFields {
+		msgDef := findComplexMsg(complexMsgs, string(msgType))
+		if msgDef == nil {
+			return errUnresolvedMsgType
+		}
+
+		field.MsgType = msgDef
 	}
 
 	return nil
@@ -226,10 +233,6 @@ func (def *MessageDefinition) String() string {
 		sb.WriteString(field.String())
 	}
 
-	for _, msg := range def.ComplexMsgs {
-		sb.WriteString(msg.String())
-	}
-
 	return sb.String()
 }
 
@@ -243,7 +246,7 @@ type MessageFieldDefinition struct {
 	Value []byte
 	// MsgType is only being used when type is complex. This defines the custom
 	// message type.
-	MsgType string
+	MsgType *MessageDefinition
 }
 
 func (def *MessageFieldDefinition) String() string {
@@ -263,10 +266,10 @@ func (def *MessageFieldDefinition) String() string {
 	return fmt.Sprintf("%s %s%s\n", fieldType, def.Name, fieldValue)
 }
 
-// findComplexMsg iterates ComplexMsgs inside def, and find for msgType. msgType can have an optional
+// findComplexMsg iterates complexMsgs, and find for msgType. msgType can have an optional
 // package name as prefix.
-func findComplexMsg(def *MessageDefinition, msgType string) *MessageDefinition {
-	for _, cur := range def.ComplexMsgs {
+func findComplexMsg(complexMsgs []*MessageDefinition, msgType string) *MessageDefinition {
+	for _, cur := range complexMsgs {
 		if strings.HasSuffix(cur.Type, msgType) {
 			return cur
 		}
@@ -293,10 +296,9 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 					curRaw = curRaw[off:]
 
 					vs := make([]map[string]interface{}, length)
-					msgDef := findComplexMsg(def, field.MsgType)
 					for i := range vs {
 						v := make(map[string]interface{})
-						curRaw, err = visit(msgDef, v, curRaw)
+						curRaw, err = visit(field.MsgType, v, curRaw)
 						if err != nil {
 							return curRaw, err
 						}
@@ -305,7 +307,7 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]inter
 					curValue[field.Name] = vs
 				} else {
 					v := make(map[string]interface{})
-					curRaw, err = visit(findComplexMsg(def, field.MsgType), v, curRaw)
+					curRaw, err = visit(field.MsgType, v, curRaw)
 					if err != nil {
 						return curRaw, err
 					}
