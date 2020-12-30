@@ -291,7 +291,8 @@ func (record *Record) UnmarshallTo(v map[string]interface{}) error {
 		return errNotFoundConnectionHeader
 	}
 
-	return decodeMessageData(&hdr.MessageDefinition, record.Data(), v)
+	_, err = decodeMessageData(&hdr.MessageDefinition, record.Data(), v)
+	return err
 }
 
 type RecordIndexData interface {

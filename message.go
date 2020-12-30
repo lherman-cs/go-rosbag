@@ -277,66 +277,71 @@ func findComplexMsg(complexMsgs []*MessageDefinition, msgType string) *MessageDe
 	return nil
 }
 
-func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]interface{}) error {
-	var visit func(*MessageDefinition, map[string]interface{}, []byte) ([]byte, error)
-	visit = func(curDef *MessageDefinition, curValue map[string]interface{}, curRaw []byte) ([]byte, error) {
-		var err error
-		for _, field := range curDef.Fields {
-			// TODO: this is const, need to parse this
-			if len(field.Value) != 0 {
-				continue
-			}
-
-			if field.Type == MessageFieldTypeComplex {
-				if field.IsArray {
-					length, off, ok := fieldDecodeLength(curRaw, field.ArraySize)
-					if !ok {
-						return curRaw, errInvalidFormat
-					}
-					curRaw = curRaw[off:]
-
-					vs := make([]map[string]interface{}, length)
-					for i := range vs {
-						v := make(map[string]interface{})
-						curRaw, err = visit(field.MsgType, v, curRaw)
-						if err != nil {
-							return curRaw, err
-						}
-						vs[i] = v
-					}
-					curValue[field.Name] = vs
-				} else {
-					v := make(map[string]interface{})
-					curRaw, err = visit(field.MsgType, v, curRaw)
-					if err != nil {
-						return curRaw, err
-					}
-					curValue[field.Name] = v
-				}
-				continue
-			}
-
-			var decodeFuncs map[MessageFieldType]fieldDecodeFunc
-			var length int
-			if field.IsArray {
-				decodeFuncs = fieldDecodeSliceHelper
-				length = field.ArraySize
-			} else {
-				decodeFuncs = fieldDecodeBasicHelper
-			}
-
-			v, off, ok := decodeFuncs[field.Type](curRaw, length)
-			if !ok {
-				return curRaw, errInvalidFormat
-			}
-
-			curValue[field.Name] = v
-			curRaw = curRaw[off:]
+func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]interface{}) ([]byte, error) {
+	var err error
+	for _, field := range def.Fields {
+		if field.Type == MessageFieldTypeComplex {
+			data[field.Name], raw, err = decodeFieldComplex(field, raw)
+		} else {
+			data[field.Name], raw, err = decodeFieldBasic(field, raw)
 		}
 
-		return curRaw, nil
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	_, err := visit(def, data, raw)
-	return err
+	return raw, nil
+}
+
+func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
+	// TODO: this is const, need to parse this
+	if len(field.Value) != 0 {
+		return field.Value, raw, nil
+	}
+
+	var decodeFuncs map[MessageFieldType]fieldDecodeFunc
+	var length int
+	if field.IsArray {
+		decodeFuncs = fieldDecodeSliceHelper
+		length = field.ArraySize
+	} else {
+		decodeFuncs = fieldDecodeBasicHelper
+	}
+
+	v, off, ok := decodeFuncs[field.Type](raw, length)
+	if !ok {
+		return nil, raw, errInvalidFormat
+	}
+
+	return v, raw[off:], nil
+}
+
+func decodeFieldComplex(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
+	var length int = 1
+	if field.IsArray {
+		var off int
+		var ok bool
+		length, off, ok = fieldDecodeLength(raw, field.ArraySize)
+		if !ok {
+			return nil, raw, errInvalidFormat
+		}
+		raw = raw[off:]
+	}
+
+	var err error
+	vs := make([]map[string]interface{}, length)
+	for i := range vs {
+		vs[i] = make(map[string]interface{})
+		raw, err = decodeMessageData(field.MsgType, raw, vs[i])
+		if err != nil {
+			return nil, raw, err
+		}
+	}
+
+	if field.IsArray {
+		return vs, raw, nil
+	}
+
+	return vs[0], raw, nil
 }

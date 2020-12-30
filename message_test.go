@@ -191,7 +191,7 @@ uint8 age
 	}
 
 	mapData := make(map[string]interface{})
-	err = decodeMessageData(&msgDef, msgDataRaw, mapData)
+	_, err = decodeMessageData(&msgDef, msgDataRaw, mapData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ uint8[] pixels
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		data := make(map[string]interface{})
-		err = decodeMessageData(&msgDef, msgDataRaw, data)
+		_, err = decodeMessageData(&msgDef, msgDataRaw, data)
 		if err != nil {
 			b.Fatal(err)
 		}
