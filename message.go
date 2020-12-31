@@ -2,12 +2,10 @@ package rosbag
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
-	"unsafe"
 )
 
 const (
@@ -19,19 +17,6 @@ var (
 	errUnresolvedMsgType = errors.New("failed to resolve a complex message type")
 	errInvalidConstType  = errors.New("invalid const type")
 )
-
-var hostEndian binary.ByteOrder
-
-func init() {
-	switch v := *(*uint16)(unsafe.Pointer(&([]byte{0x12, 0x34}[0]))); v {
-	case 0x1234:
-		hostEndian = binary.BigEndian
-	case 0x3412:
-		hostEndian = binary.LittleEndian
-	default:
-		panic(fmt.Sprintf("failed to determine host endianness: %x", v))
-	}
-}
 
 type MessageFieldType uint8
 
