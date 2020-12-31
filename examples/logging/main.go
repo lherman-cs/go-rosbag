@@ -1,9 +1,7 @@
 package main
 
 import (
-	"fmt"
 	"os"
-	"runtime/pprof"
 
 	"github.com/k0kubun/pp"
 	"github.com/lherman-cs/go-rosbag"
@@ -16,41 +14,22 @@ func must(err error) {
 }
 
 func main() {
-	cpu, err := os.Create("cpu.out")
-	must(err)
-	defer cpu.Close()
-
-	must(pprof.StartCPUProfile(cpu))
-	defer pprof.StopCPUProfile()
 	f, err := os.Open("example.bag")
 	must(err)
 	defer f.Close()
 
 	decoder := rosbag.NewDecoder(f)
-	var record rosbag.Record
-
-	visited := make(map[uint32]struct{})
-
 	for {
-		op, err := decoder.Read(&record)
+		record, release, err := decoder.Read()
 		must(err)
 
-		if op == rosbag.OpMessageData {
-			connId, err := record.Conn()
-			must(err)
-
-			if _, ok := visited[connId]; ok {
-				continue
-			}
-
-			conn := record.Conns[connId]
-			fmt.Println(conn.Topic)
-
+		switch record := record.(type) {
+		case *rosbag.RecordMessageData:
 			v := make(map[string]interface{})
 			must(record.UnmarshallTo(v))
 			pp.Println(v)
-
-			visited[connId] = struct{}{}
 		}
+
+		release()
 	}
 }

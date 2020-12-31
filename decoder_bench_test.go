@@ -24,10 +24,9 @@ func start() {
 	defer f.Close()
 
 	decoder := NewDecoder(f)
-	var record Record
 
 	for {
-		op, err := decoder.Read(&record)
+		record, release, err := decoder.Read()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -35,9 +34,11 @@ func start() {
 			must(err)
 		}
 
-		if op == OpMessageData {
+		switch record := record.(type) {
+		case *RecordMessageData:
 			v := make(map[string]interface{})
 			must(record.UnmarshallTo(v))
 		}
+		release()
 	}
 }

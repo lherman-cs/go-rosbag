@@ -60,11 +60,16 @@ type Rosbag struct {
 	Record  []Record
 }
 
-type Record struct {
+type Record interface {
+	Op() (Op, error)
+	Header() []byte
+	Data() []byte
+}
+
+type RecordBase struct {
 	// Raw contains: <header_len><header><data_len><data>
 	Raw                []byte
 	HeaderLen, DataLen uint32
-	Conns              map[uint32]*ConnectionHeader
 }
 
 func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
@@ -98,7 +103,7 @@ func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
 	return nil
 }
 
-func (record *Record) findField(key []byte) ([]byte, error) {
+func (record *RecordBase) findField(key []byte) ([]byte, error) {
 	var value []byte
 	header := record.Header()
 	err := iterateHeaderFields(header, func(currentKey, currentValue []byte) bool {
@@ -121,7 +126,7 @@ func (record *Record) findField(key []byte) ([]byte, error) {
 	return value, nil
 }
 
-func (record *Record) findFieldUint32(key []byte) (uint32, error) {
+func (record *RecordBase) findFieldUint32(key []byte) (uint32, error) {
 	value, err := record.findField(key)
 	if err != nil {
 		return 0, err
@@ -129,7 +134,7 @@ func (record *Record) findFieldUint32(key []byte) (uint32, error) {
 	return endian.Uint32(value), nil
 }
 
-func (record *Record) findFieldUint64(key []byte) (uint64, error) {
+func (record *RecordBase) findFieldUint64(key []byte) (uint64, error) {
 	value, err := record.findField(key)
 	if err != nil {
 		return 0, err
@@ -137,7 +142,7 @@ func (record *Record) findFieldUint64(key []byte) (uint64, error) {
 	return endian.Uint64(value), nil
 }
 
-func (record *Record) findFieldTime(key []byte) (time.Time, error) {
+func (record *RecordBase) findFieldTime(key []byte) (time.Time, error) {
 	value, err := record.findField(key)
 	if err != nil {
 		return time.Time{}, err
@@ -145,7 +150,7 @@ func (record *Record) findFieldTime(key []byte) (time.Time, error) {
 	return extractTime(value), nil
 }
 
-func (record *Record) Op() (Op, error) {
+func (record *RecordBase) Op() (Op, error) {
 	value, err := record.findField([]byte("op"))
 	if err != nil {
 		return OpInvalid, err
@@ -153,16 +158,16 @@ func (record *Record) Op() (Op, error) {
 	return Op(value[0]), nil
 }
 
-func (record *Record) Header() []byte {
+func (record *RecordBase) Header() []byte {
 	return record.Raw[lenInBytes : lenInBytes+record.HeaderLen]
 }
 
-func (record *Record) Data() []byte {
+func (record *RecordBase) Data() []byte {
 	off := 2*lenInBytes + record.HeaderLen
 	return record.Raw[off : off+record.DataLen]
 }
 
-func (record *Record) grow(requiredSize uint32) {
+func (record *RecordBase) grow(requiredSize uint32) {
 	if uint32(len(record.Raw)) < requiredSize {
 		newRaw := make([]byte, 2*requiredSize)
 		copy(newRaw, record.Raw)
@@ -170,50 +175,27 @@ func (record *Record) grow(requiredSize uint32) {
 	}
 }
 
-func (record *Record) validateOp(to Op) *Record {
-	op, err := record.Op()
-	if err != nil {
-		panic(err)
-	}
-
-	if op != to {
-		panic(errInvalidOp)
-	}
-	return record
+type RecordBagHeader struct {
+	*RecordBase
 }
 
-type RecordBagHeader interface {
-	IndexPos() (uint64, error)
-	ConnCount() (uint32, error)
-	ChunkCount() (uint32, error)
-}
-
-func (record *Record) BagHeader() RecordBagHeader {
-	return record.validateOp(OpBagHeader)
-}
-
-func (record *Record) IndexPos() (uint64, error) {
+func (record *RecordBagHeader) IndexPos() (uint64, error) {
 	return record.findFieldUint64([]byte("index_pos"))
 }
 
-func (record *Record) ConnCount() (uint32, error) {
+func (record *RecordBagHeader) ConnCount() (uint32, error) {
 	return record.findFieldUint32([]byte("conn_count"))
 }
 
-func (record *Record) ChunkCount() (uint32, error) {
+func (record *RecordBagHeader) ChunkCount() (uint32, error) {
 	return record.findFieldUint32([]byte("chunk_count"))
 }
 
-type RecordChunk interface {
-	Compression() (Compression, error)
-	Size() (uint32, error)
+type RecordChunk struct {
+	*RecordBase
 }
 
-func (record *Record) Chunk() RecordChunk {
-	return record.validateOp(OpChunk)
-}
-
-func (record *Record) Compression() (Compression, error) {
+func (record *RecordChunk) Compression() (Compression, error) {
 	value, err := record.findField([]byte("compression"))
 	if err != nil {
 		return CompressionNone, err
@@ -221,25 +203,19 @@ func (record *Record) Compression() (Compression, error) {
 	return Compression(value), nil
 }
 
-func (record *Record) Size() (uint32, error) {
+func (record *RecordChunk) Size() (uint32, error) {
 	return record.findFieldUint32([]byte("size"))
 }
 
-type RecordConnection interface {
-	Conn() (uint32, error)
-	Topic() (string, error)
-	ConnectionHeader() (*ConnectionHeader, error)
+type RecordConnection struct {
+	*RecordBase
 }
 
-func (record *Record) Connection() RecordConnection {
-	return record.validateOp(OpConnection)
-}
-
-func (record *Record) Conn() (uint32, error) {
+func (record *RecordConnection) Conn() (uint32, error) {
 	return record.findFieldUint32([]byte("conn"))
 }
 
-func (record *Record) Topic() (string, error) {
+func (record *RecordConnection) Topic() (string, error) {
 	value, err := record.findField([]byte("topic"))
 	if err != nil {
 		return "", err
@@ -248,7 +224,7 @@ func (record *Record) Topic() (string, error) {
 }
 
 // ConnectionHeader reads the underlying data and decode it to ConnectionHeader
-func (record *Record) ConnectionHeader() (*ConnectionHeader, error) {
+func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
 	var err error
 	var connectionHeader ConnectionHeader
 	err = iterateHeaderFields(record.Data(), func(key, value []byte) bool {
@@ -266,73 +242,64 @@ func (record *Record) ConnectionHeader() (*ConnectionHeader, error) {
 	return &connectionHeader, err
 }
 
-type RecordMessageData interface {
-	Conn() (uint32, error)
-	Time() (time.Time, error)
-	UnmarshallTo(map[string]interface{}) error
+type RecordMessageData struct {
+	*RecordBase
+	connHdr *ConnectionHeader
 }
 
-func (record *Record) MessageData() RecordMessageData {
-	return record.validateOp(OpMessageData)
+func (record *RecordMessageData) Conn() (uint32, error) {
+	return record.findFieldUint32([]byte("conn"))
 }
 
-func (record *Record) Time() (time.Time, error) {
+func (record *RecordMessageData) Time() (time.Time, error) {
 	return record.findFieldTime([]byte("time"))
 }
 
-func (record *Record) UnmarshallTo(v map[string]interface{}) error {
-	conn, err := record.Conn()
-	if err != nil {
-		return err
-	}
+func (record *RecordMessageData) ConnectionHeader() *ConnectionHeader {
+	return record.connHdr
+}
 
-	hdr, ok := record.Conns[conn]
-	if !ok {
-		return errNotFoundConnectionHeader
-	}
-
-	_, err = decodeMessageData(&hdr.MessageDefinition, record.Data(), v)
+func (record *RecordMessageData) UnmarshallTo(v map[string]interface{}) error {
+	_, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), v)
 	return err
 }
 
-type RecordIndexData interface {
-	Ver() (uint32, error)
-	Conn() (uint32, error)
-	Count() (uint32, error)
+type RecordIndexData struct {
+	*RecordBase
 }
 
-func (record *Record) IndexData() RecordIndexData {
-	return record.validateOp(OpIndexData)
+func (record *RecordIndexData) Conn() (uint32, error) {
+	return record.findFieldUint32([]byte("conn"))
 }
 
-func (record *Record) Ver() (uint32, error) {
+func (record *RecordIndexData) Ver() (uint32, error) {
 	return record.findFieldUint32([]byte("ver"))
 }
 
-func (record *Record) Count() (uint32, error) {
+func (record *RecordIndexData) Count() (uint32, error) {
 	return record.findFieldUint32([]byte("count"))
 }
 
-type RecordChunkInfo interface {
-	Ver() (uint32, error)
-	ChunkPos() (uint64, error)
-	StartTime() (time.Time, error)
-	EndTime() (time.Time, error)
-	Count() (uint32, error)
+type RecordChunkInfo struct {
+	*RecordBase
 }
 
-func (record *Record) ChunkInfo() RecordChunkInfo {
-	return record.validateOp(OpChunkInfo)
+func (record *RecordChunkInfo) Ver() (uint32, error) {
+	return record.findFieldUint32([]byte("ver"))
 }
 
-func (record *Record) ChunkPos() (uint64, error) {
+func (record *RecordChunkInfo) ChunkPos() (uint64, error) {
 	return record.findFieldUint64([]byte("chunk_pos"))
 }
 
-func (record *Record) StartTime() (time.Time, error) {
+func (record *RecordChunkInfo) StartTime() (time.Time, error) {
 	return record.findFieldTime([]byte("start_time"))
 }
 
-func (record *Record) EndTime() (time.Time, error) {
+func (record *RecordChunkInfo) EndTime() (time.Time, error) {
 	return record.findFieldTime([]byte("end_time"))
+}
+
+func (record *RecordChunkInfo) Count() (uint32, error) {
+	return record.findFieldUint32([]byte("count"))
 }

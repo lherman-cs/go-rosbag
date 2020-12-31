@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/pierrec/lz4/v4"
 )
@@ -13,40 +14,61 @@ import (
 const (
 	lenInBytes           = 4
 	headerFieldDelimiter = '='
+	initialRecordSize    = 4096
 )
 
 var (
 	errUnsupportedCompression = errors.New("unsupported compression algorithm. Available algortihms: [none, bz2, lz4]")
 )
 
+var (
+	recordPool = sync.Pool{
+		New: func() interface{} {
+			return &RecordBase{
+				Raw: make([]byte, initialRecordSize),
+			}
+		},
+	}
+)
+
 type Decoder struct {
 	reader         io.Reader
 	chunkReader    io.Reader
 	checkedVersion bool
+	conns          map[uint32]*ConnectionHeader
 }
 
 func NewDecoder(r io.Reader) *Decoder {
 	return &Decoder{
 		reader: bufio.NewReader(r),
+		conns:  make(map[uint32]*ConnectionHeader),
 	}
 }
 
 // Read returns the next record in the rosbag. Next might will return nil record and error
 // at the beginning to mark that the rosbag format version is supported. When, it reaches EOF,
 // Next returns io.EOF error.
-func (decoder *Decoder) Read(record *Record) (op Op, err error) {
+func (decoder *Decoder) Read() (Record, func(), error) {
 	if !decoder.checkedVersion {
-		if err = decoder.checkVersion(); err != nil {
-			return
+		if err := decoder.checkVersion(); err != nil {
+			return nil, nil, err
 		}
 
 		decoder.checkedVersion = true
 	}
 
+	record := recordPool.Get().(*RecordBase)
 	if decoder.chunkReader != nil {
-		op, err = decoder.decodeRecord(decoder.chunkReader, record)
-		if err == nil || err != io.EOF {
-			return
+		specializedRecord, err := decoder.decodeRecord(decoder.chunkReader, record)
+		switch err {
+		case nil:
+			return specializedRecord, func() { recordPool.Put(record) }, nil
+		case io.EOF:
+			/* explicit ignore */
+		default:
+			// the record is not usable, so recyle it
+			recordPool.Put(record)
+			return nil, nil, err
 		}
 
 		// at this point, the error must be EOF, need to reset chunkReader and read from the source
@@ -54,18 +76,24 @@ func (decoder *Decoder) Read(record *Record) (op Op, err error) {
 		decoder.chunkReader = nil
 	}
 
-	op, err = decoder.decodeRecord(decoder.reader, record)
+	specializedRecord, err := decoder.decodeRecord(decoder.reader, record)
 	if err != nil {
-		return
+		// the record is not usable, so recyle it
+		recordPool.Put(record)
+		return nil, nil, err
 	}
 
-	return
+	return specializedRecord, func() { recordPool.Put(record) }, nil
 }
 
-func (decoder *Decoder) handleChunk(record *Record) error {
-	compression, err := record.Compression()
+func (decoder *Decoder) handleChunk(record *RecordBase) (Record, error) {
+	chunkRecord := RecordChunk{
+		RecordBase: record,
+	}
+
+	compression, err := chunkRecord.Compression()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	chunkReader := io.LimitReader(decoder.reader, int64(record.DataLen))
@@ -77,29 +105,48 @@ func (decoder *Decoder) handleChunk(record *Record) error {
 	case CompressionLZ4:
 		decoder.chunkReader = lz4.NewReader(chunkReader)
 	default:
-		return errUnsupportedCompression
+		return nil, errUnsupportedCompression
 	}
 
-	return nil
+	return &chunkRecord, nil
 }
 
-func (decoder *Decoder) handleConnection(record *Record) error {
-	conn, err := record.Conn()
+func (decoder *Decoder) handleConnection(record *RecordBase) (Record, error) {
+	connRecord := RecordConnection{
+		RecordBase: record,
+	}
+
+	conn, err := connRecord.Conn()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	hdr, err := record.ConnectionHeader()
+	hdr, err := connRecord.ConnectionHeader()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if record.Conns == nil {
-		record.Conns = make(map[uint32]*ConnectionHeader)
+	decoder.conns[conn] = hdr
+	return &connRecord, nil
+}
+
+func (decoder *Decoder) handleMessageData(record *RecordBase) (Record, error) {
+	connRecord := RecordMessageData{
+		RecordBase: record,
 	}
 
-	record.Conns[conn] = hdr
-	return nil
+	conn, err := connRecord.Conn()
+	if err != nil {
+		return nil, err
+	}
+
+	connHdr, ok := decoder.conns[conn]
+	if !ok {
+		return nil, errNotFoundConnectionHeader
+	}
+
+	connRecord.connHdr = connHdr
+	return &connRecord, nil
 }
 
 func (decoder *Decoder) checkVersion() error {
@@ -117,13 +164,14 @@ func (decoder *Decoder) checkVersion() error {
 	return nil
 }
 
-func (decoder *Decoder) decodeRecord(r io.Reader, record *Record) (op Op, err error) {
+func (decoder *Decoder) decodeRecord(r io.Reader, record *RecordBase) (Record, error) {
 	var off uint32
+	var err error
 
 	record.grow(off + lenInBytes)
 	_, err = io.ReadFull(r, record.Raw[off:off+lenInBytes])
 	if err != nil {
-		return
+		return nil, err
 	}
 	record.HeaderLen = endian.Uint32(record.Raw[off : off+lenInBytes])
 	off += lenInBytes
@@ -131,19 +179,19 @@ func (decoder *Decoder) decodeRecord(r io.Reader, record *Record) (op Op, err er
 	record.grow(off + record.HeaderLen)
 	_, err = io.ReadFull(r, record.Raw[off:off+record.HeaderLen])
 	if err != nil {
-		return
+		return nil, err
 	}
 	off += record.HeaderLen
 
-	op, err = record.Op()
+	op, err := record.Op()
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	record.grow(off + lenInBytes)
 	_, err = io.ReadFull(r, record.Raw[off:off+lenInBytes])
 	if err != nil {
-		return
+		return nil, err
 	}
 	record.DataLen = endian.Uint32(record.Raw[off : off+lenInBytes])
 	off += lenInBytes
@@ -151,20 +199,27 @@ func (decoder *Decoder) decodeRecord(r io.Reader, record *Record) (op Op, err er
 	// Since RecordChunk contains a lot of messages and connections, we don't parse
 	// the data part. We'll let the next iteration to parse this.
 	if op == OpChunk {
-		err = decoder.handleChunk(record)
-		return
+		return decoder.handleChunk(record)
 	}
 
 	record.grow(off + record.DataLen)
 	_, err = io.ReadFull(r, record.Raw[off:off+record.DataLen])
 	if err != nil {
-		return
+		return nil, err
 	}
 
-	if op == OpConnection {
-		err = decoder.handleConnection(record)
-		return
+	switch op {
+	case OpBagHeader:
+		return &RecordBagHeader{RecordBase: record}, nil
+	case OpConnection:
+		return decoder.handleConnection(record)
+	case OpMessageData:
+		return decoder.handleMessageData(record)
+	case OpIndexData:
+		return &RecordIndexData{RecordBase: record}, nil
+	case OpChunkInfo:
+		return &RecordChunkInfo{RecordBase: record}, nil
+	default:
+		return nil, errInvalidOp
 	}
-
-	return
 }

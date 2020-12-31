@@ -54,7 +54,7 @@ func TestDecodeRecord(t *testing.T) {
 		Name   string
 		Raw    func() []byte
 		Fail   bool
-		Expect func([]byte) *Record
+		Expect func([]byte) Record
 	}{
 		{
 			Name: "Not enough data for header len",
@@ -95,11 +95,13 @@ func TestDecodeRecord(t *testing.T) {
 				endian.PutUint32(raw[12:], 1)
 				return raw
 			},
-			Expect: func(b []byte) *Record {
-				record := &Record{
-					HeaderLen: 8,
-					DataLen:   1,
-					Raw:       b,
+			Expect: func(b []byte) Record {
+				record := &RecordBagHeader{
+					RecordBase: &RecordBase{
+						HeaderLen: 8,
+						DataLen:   1,
+						Raw:       b,
+					},
 				}
 
 				return record
@@ -111,11 +113,11 @@ func TestDecodeRecord(t *testing.T) {
 		testCase := testCase
 		t.Run(testCase.Name, func(t *testing.T) {
 			raw := testCase.Raw()
-			var actual Record
+			var actualBase RecordBase
 
 			decoder := NewDecoder(bytes.NewReader(raw))
 			decoder.checkedVersion = true
-			_, err := decoder.decodeRecord(decoder.reader, &actual)
+			actual, err := decoder.decodeRecord(decoder.reader, &actualBase)
 
 			if testCase.Fail && err == nil {
 				t.Fatal("expected to fail")
