@@ -14,6 +14,7 @@ type TestField struct {
 	Value     interface{}
 	ArraySize int
 	Dynamic   bool
+	Const     bool
 }
 
 func addData(b []byte, v interface{}) []byte {
@@ -81,6 +82,10 @@ func convertFieldsToRaw(fields []TestField) []byte {
 	var raw []byte
 
 	for _, field := range fields {
+		if field.Const {
+			continue
+		}
+
 		if field.ArraySize == 0 {
 			raw = addData(raw, field.Value)
 			continue
@@ -176,17 +181,31 @@ time[2] timeArray
 duration[2] durationArray
 Person[2] personArray
 
+Const const
+
   MSG: custom_msgs/Person # Message type should be parseable with a comment and a leading space
 uint8 age
+
+
+MSG: custom_msgs/Const
+bool boolConst = 1
+int8 int8Const = -1
+uint8 uint8Const = 1
+int16 int16Const = -1
+uint16 uint16Const = 1
+int32 int32Const = -1
+uint32 uint32Const = 1
+int64 int64Const = -1
+uint64 uint64Const = 1
+float32 float32Const = 0.123
+float64 float64Const = 0.321
+string stringConst  =  lukas herman# This comment should not be included in the string
 `)
 
 	/*
 
-	   Const const
 
-	   MSG: custom_msgs/Const
-	   string name  =  lukas herman# This comment should not be included in the string
-	*/
+	 */
 
 	expectedFields := []TestField{
 		{Name: "bool", Value: true},
@@ -243,6 +262,20 @@ uint8 age
 		{Name: "personArray", ArraySize: 2, Value: [][]TestField{
 			{{Name: "age", Value: uint8(26)}},
 			{{Name: "age", Value: uint8(100)}},
+		}},
+		{Name: "const", Value: []TestField{
+			{Name: "boolConst", Value: true, Const: true},
+			{Name: "int8Const", Value: int8(-1), Const: true},
+			{Name: "uint8Const", Value: uint8(1), Const: true},
+			{Name: "int16Const", Value: int16(-1), Const: true},
+			{Name: "uint16Const", Value: uint16(1), Const: true},
+			{Name: "int32Const", Value: int32(-1), Const: true},
+			{Name: "uint32Const", Value: uint32(1), Const: true},
+			{Name: "int64Const", Value: int64(-1), Const: true},
+			{Name: "uint64Const", Value: uint64(1), Const: true},
+			{Name: "float32Const", Value: float32(0.123), Const: true},
+			{Name: "float64Const", Value: float64(0.321), Const: true},
+			{Name: "stringConst", Value: "lukas herman", Const: true},
 		}},
 	}
 
