@@ -5,7 +5,16 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
+
+type TestField struct {
+	Name      string
+	Value     interface{}
+	ArraySize int
+	Dynamic   bool
+}
 
 func addData(b []byte, v interface{}) []byte {
 	var buf []byte
@@ -50,24 +59,76 @@ func addData(b []byte, v interface{}) []byte {
 		copy(buf[4:], []byte(v))
 	case time.Time:
 		buf = make([]byte, 8)
-		endian.PutUint32(buf, uint32(v.Second()))
-		endian.PutUint32(buf[4:], uint32(v.Nanosecond()))
+		timestamp := v.UnixNano()
+		sec := timestamp / int64(time.Second/time.Nanosecond)
+		nsec := timestamp % int64(time.Second/time.Nanosecond)
+		endian.PutUint32(buf, uint32(sec))
+		endian.PutUint32(buf[4:], uint32(nsec))
 	case time.Duration:
 		buf = make([]byte, 8)
-		sec := v / time.Second
+		sec := v / (time.Second / time.Nanosecond)
 		nsec := v % (time.Second / time.Nanosecond)
 		endian.PutUint32(buf, uint32(sec))
 		endian.PutUint32(buf[4:], uint32(nsec))
+	case []TestField:
+		buf = convertFieldsToRaw(v)
 	}
 
 	return append(b, buf...)
 }
 
+func convertFieldsToRaw(fields []TestField) []byte {
+	var raw []byte
+
+	for _, field := range fields {
+		if field.ArraySize == 0 {
+			raw = addData(raw, field.Value)
+			continue
+		}
+
+		if field.Dynamic {
+			raw = addData(raw, uint32(field.ArraySize))
+		}
+
+		reflectValue := reflect.ValueOf(field.Value)
+		for i := 0; i < reflectValue.Len(); i++ {
+			raw = addData(raw, reflectValue.Index(i).Interface())
+		}
+	}
+
+	return raw
+}
+
+func convertFieldsToMap(fields []TestField) map[string]interface{} {
+	m := make(map[string]interface{})
+
+	for _, field := range fields {
+		switch v := field.Value.(type) {
+		case []TestField:
+			m[field.Name] = convertFieldsToMap(v)
+		case [][]TestField:
+			arr := make([]map[string]interface{}, len(v))
+			for i, item := range v {
+				arr[i] = convertFieldsToMap(item)
+			}
+			m[field.Name] = arr
+		default:
+			m[field.Name] = field.Value
+		}
+	}
+
+	return m
+}
+
 func TestDecodeMessageData(t *testing.T) {
 	msgDefRaw := []byte(`
-bool bool 
-int8 int8
-uint8 uint8
+# This is an example comment
+# Example can be anywhere
+
+# Following is a list of singular types
+bool bool# Comment can be next to the variable name
+int8     int8 # Space should not matter in between the type and name
+  uint8 uint8 # Initial space shouldn't matter either
 int16 int16
 uint16 uint16
 int32 int32
@@ -76,120 +137,117 @@ int64 int64
 uint64 uint64
 float32 float32
 float64 float64
-Person person
-uint8[3] pixel
-Person[] children
 string string
 time time
 duration duration
-Const const
+Person person
 
-MSG: custom_msgs/Person
+# Following is a list of dynamic slice types
+bool[] boolSlice
+int8[] int8Slice
+uint8[] uint8Slice
+int16[] int16Slice
+uint16[] uint16Slice
+int32[] int32Slice
+uint32[] uint32Slice
+int64[] int64Slice
+uint64[] uint64Slice
+float32[] float32Slice
+float64[] float64Slice
+string[] stringSlice
+time[] timeSlice
+duration[] durationSlice
+Person[] personSlice
+
+# Following is a list of fixed slice types
+bool[2] boolArray
+int8[2] int8Array
+uint8[2] uint8Array
+int16[2] int16Array
+uint16[2] uint16Array
+int32[2] int32Array
+uint32[2] uint32Array
+int64[2] int64Array
+uint64[2] uint64Array
+float32[3] float32Array
+float64[3] float64Array
+string[1] stringArray
+time[2] timeArray
+duration[2] durationArray
+Person[2] personArray
+
+  MSG: custom_msgs/Person # Message type should be parseable with a comment and a leading space
 uint8 age
-
-MSG: custom_msgs/Const
-string name  =  lukas herman
 `)
 
-	type Person struct {
-		Age uint8 `rosbag:"age"`
+	/*
+
+	   Const const
+
+	   MSG: custom_msgs/Const
+	   string name  =  lukas herman# This comment should not be included in the string
+	*/
+
+	expectedFields := []TestField{
+		{Name: "bool", Value: true},
+		{Name: "int8", Value: int8(math.MinInt8)},
+		{Name: "uint8", Value: uint8(math.MaxUint8)},
+		{Name: "int16", Value: int16(math.MinInt16)},
+		{Name: "uint16", Value: uint16(math.MaxUint16)},
+		{Name: "int32", Value: int32(math.MinInt32)},
+		{Name: "uint32", Value: uint32(math.MaxUint32)},
+		{Name: "int64", Value: int64(math.MinInt64)},
+		{Name: "uint64", Value: uint64(math.MaxUint64)},
+		{Name: "float32", Value: float32(math.MaxFloat32 / 10)},
+		{Name: "float64", Value: float64(math.MaxFloat64 / 10)},
+		{Name: "string", Value: "lukas"},
+		{Name: "time", Value: time.Unix(1, 10)},
+		{Name: "duration", Value: time.Second + time.Nanosecond},
+		{Name: "person", Value: []TestField{
+			{Name: "age", Value: uint8(24)},
+		}},
+		{Name: "boolSlice", Value: []bool{true, false}, ArraySize: 2, Dynamic: true},
+		{Name: "int8Slice", Value: []int8{-1, 1}, ArraySize: 2, Dynamic: true},
+		{Name: "uint8Slice", Value: []uint8{1, 2}, ArraySize: 2, Dynamic: true},
+		{Name: "int16Slice", Value: []int16{-1, 1}, ArraySize: 2, Dynamic: true},
+		{Name: "uint16Slice", Value: []uint16{1, 2}, ArraySize: 2, Dynamic: true},
+		{Name: "int32Slice", Value: []int32{-1, 1}, ArraySize: 2, Dynamic: true},
+		{Name: "uint32Slice", Value: []uint32{1, 2}, ArraySize: 2, Dynamic: true},
+		{Name: "int64Slice", Value: []int64{-1, 1}, ArraySize: 2, Dynamic: true},
+		{Name: "uint64Slice", Value: []uint64{1, 2}, ArraySize: 2, Dynamic: true},
+		{Name: "float32Slice", Value: []float32{0.123, 0.3312, 0.111}, ArraySize: 3, Dynamic: true},
+		{Name: "float64Slice", Value: []float64{-0.123, 0.3312, -0.111}, ArraySize: 3, Dynamic: true},
+		{Name: "stringSlice", Value: []string{"lukas"}, ArraySize: 1, Dynamic: true},
+		// 1,000,000,000,000
+		{Name: "timeSlice", Value: []time.Time{time.Unix(10, 1000), time.Unix(1000, 2132131)}, ArraySize: 2, Dynamic: true},
+		{Name: "durationSlice", Value: []time.Duration{time.Second, time.Microsecond}, ArraySize: 2, Dynamic: true},
+		{Name: "personSlice", ArraySize: 2, Dynamic: true, Value: [][]TestField{
+			{{Name: "age", Value: uint8(26)}},
+			{{Name: "age", Value: uint8(100)}},
+		}},
+		{Name: "boolArray", Value: []bool{true, false}, ArraySize: 2},
+		{Name: "int8Array", Value: []int8{-1, 1}, ArraySize: 2},
+		{Name: "uint8Array", Value: []uint8{1, 2}, ArraySize: 2},
+		{Name: "int16Array", Value: []int16{-1, 1}, ArraySize: 2},
+		{Name: "uint16Array", Value: []uint16{1, 2}, ArraySize: 2},
+		{Name: "int32Array", Value: []int32{-1, 1}, ArraySize: 2},
+		{Name: "uint32Array", Value: []uint32{1, 2}, ArraySize: 2},
+		{Name: "int64Array", Value: []int64{-1, 1}, ArraySize: 2},
+		{Name: "uint64Array", Value: []uint64{1, 2}, ArraySize: 2},
+		{Name: "float32Array", Value: []float32{0.123, 0.3312, 0.111}, ArraySize: 3},
+		{Name: "float64Array", Value: []float64{-0.123, 0.3312, -0.111}, ArraySize: 3},
+		{Name: "stringArray", Value: []string{"lukas"}, ArraySize: 1},
+		// 1,000,000,000,000
+		{Name: "timeArray", Value: []time.Time{time.Unix(10, 1000), time.Unix(1000, 2132131)}, ArraySize: 2},
+		{Name: "durationArray", Value: []time.Duration{time.Second, time.Microsecond}, ArraySize: 2},
+		{Name: "personArray", ArraySize: 2, Value: [][]TestField{
+			{{Name: "age", Value: uint8(26)}},
+			{{Name: "age", Value: uint8(100)}},
+		}},
 	}
 
-	type Data struct {
-		Bool     bool          `rosbag:"bool"`
-		Int8     int8          `rosbag:"int8"`
-		Uint8    uint8         `rosbag:"uint8"`
-		Int16    int16         `rosbag:"int16"`
-		Uint16   uint16        `rosbag:"uint16"`
-		Int32    int32         `rosbag:"int32"`
-		Uint32   uint32        `rosbag:"uint32"`
-		Int64    int64         `rosbag:"int64"`
-		Uint64   uint64        `rosbag:"uint64"`
-		Float32  float32       `rosbag:"float32"`
-		Float64  float64       `rosbag:"float64"`
-		Person   Person        `rosbag:"person"`
-		Pixel    []uint8       `rosbag:"pixel"`
-		Children []Person      `rosbag:"children"`
-		String   string        `rosbag:"string"`
-		Time     time.Time     `rosbag:"time"`
-		Duration time.Duration `rosbag:"duration"`
-	}
-
-	structExpected := Data{
-		Bool:    true,
-		Int8:    math.MinInt8,
-		Uint8:   math.MaxUint8,
-		Int16:   math.MinInt16,
-		Uint16:  math.MaxUint16,
-		Int32:   math.MinInt32,
-		Uint32:  math.MaxUint32,
-		Int64:   math.MinInt64,
-		Uint64:  math.MaxUint64,
-		Float32: math.MaxFloat32 / 10,
-		Float64: math.MaxFloat64 / 10,
-		Person: Person{
-			Age: 24,
-		},
-		Pixel: []uint8{1, 2, 3},
-		Children: []Person{
-			{Age: 20},
-			{Age: 15},
-		},
-		String:   "lukas",
-		Time:     time.Unix(1, 10),
-		Duration: time.Second + time.Nanosecond,
-	}
-
-	mapExpected := map[string]interface{}{
-		"bool":    true,
-		"int8":    structExpected.Int8,
-		"uint8":   structExpected.Uint8,
-		"int16":   structExpected.Int16,
-		"uint16":  structExpected.Uint16,
-		"int32":   structExpected.Int32,
-		"uint32":  structExpected.Uint32,
-		"int64":   structExpected.Int64,
-		"uint64":  structExpected.Uint64,
-		"float32": structExpected.Float32,
-		"float64": structExpected.Float64,
-		"person": map[string]interface{}{
-			"age": structExpected.Person.Age,
-		},
-		"pixel": []uint8{structExpected.Pixel[0], structExpected.Pixel[1], structExpected.Pixel[2]},
-		"children": []map[string]interface{}{
-			{"age": structExpected.Children[0].Age},
-			{"age": structExpected.Children[1].Age},
-		},
-		"string":   structExpected.String,
-		"time":     structExpected.Time,
-		"duration": structExpected.Duration,
-		"const": map[string]interface{}{
-			"name": "lukas herman",
-		},
-	}
-
-	var msgDataRaw []byte
-	msgDataRaw = addData(msgDataRaw, structExpected.Bool)
-	msgDataRaw = addData(msgDataRaw, structExpected.Int8)
-	msgDataRaw = addData(msgDataRaw, structExpected.Uint8)
-	msgDataRaw = addData(msgDataRaw, structExpected.Int16)
-	msgDataRaw = addData(msgDataRaw, structExpected.Uint16)
-	msgDataRaw = addData(msgDataRaw, structExpected.Int32)
-	msgDataRaw = addData(msgDataRaw, structExpected.Uint32)
-	msgDataRaw = addData(msgDataRaw, structExpected.Int64)
-	msgDataRaw = addData(msgDataRaw, structExpected.Uint64)
-	msgDataRaw = addData(msgDataRaw, structExpected.Float32)
-	msgDataRaw = addData(msgDataRaw, structExpected.Float64)
-	msgDataRaw = addData(msgDataRaw, structExpected.Person.Age)
-	msgDataRaw = addData(msgDataRaw, structExpected.Pixel[0])
-	msgDataRaw = addData(msgDataRaw, structExpected.Pixel[1])
-	msgDataRaw = addData(msgDataRaw, structExpected.Pixel[2])
-	msgDataRaw = addData(msgDataRaw, uint32(2))
-	msgDataRaw = addData(msgDataRaw, structExpected.Children[0].Age)
-	msgDataRaw = addData(msgDataRaw, structExpected.Children[1].Age)
-	msgDataRaw = addData(msgDataRaw, structExpected.String)
-	msgDataRaw = addData(msgDataRaw, structExpected.Time)
-	msgDataRaw = addData(msgDataRaw, structExpected.Duration)
+	expectedMap := convertFieldsToMap(expectedFields)
+	msgDataRaw := convertFieldsToRaw(expectedFields)
 
 	var msgDef MessageDefinition
 	err := msgDef.unmarshall(msgDefRaw)
@@ -197,14 +255,14 @@ string name  =  lukas herman
 		t.Fatal(err)
 	}
 
-	mapData := make(map[string]interface{})
-	_, err = decodeMessageData(&msgDef, msgDataRaw, mapData)
+	actualMap := make(map[string]interface{})
+	_, err = decodeMessageData(&msgDef, msgDataRaw, actualMap)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(mapExpected, mapData) {
-		t.Fatalf("invalid parsed data.\n\nExpected:\n\n%#v\n\nActual:\n\n%#v", mapExpected, mapData)
+	if diff := cmp.Diff(expectedMap, actualMap); diff != "" {
+		t.Fatal(diff)
 	}
 }
 

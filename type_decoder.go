@@ -255,7 +255,7 @@ func fieldDecodeDuration(raw []byte, length int) (v interface{}, off int, ok boo
 	return
 }
 
-func fieldDecodeBasicSlice(raw []byte, ptr unsafe.Pointer, length int) (off int, ok bool) {
+func fieldDecodeBasicSlice(raw []byte, ptr unsafe.Pointer, length int, size int) (off int, ok bool) {
 	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
@@ -265,7 +265,7 @@ func fieldDecodeBasicSlice(raw []byte, ptr unsafe.Pointer, length int) (off int,
 	s.Data = uintptr(unsafe.Pointer(&raw[off]))
 	s.Len = length
 	s.Cap = length
-	off += length
+	off += length * size
 	ok = true
 	return
 }
@@ -273,7 +273,7 @@ func fieldDecodeBasicSlice(raw []byte, ptr unsafe.Pointer, length int) (off int,
 func fieldDecodeBoolSlice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []bool
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 1)
 	v = b
 	return
 }
@@ -281,7 +281,7 @@ func fieldDecodeBoolSlice(raw []byte, length int) (v interface{}, off int, ok bo
 func fieldDecodeInt8Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []int8
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 1)
 	v = b
 	return
 }
@@ -289,7 +289,7 @@ func fieldDecodeInt8Slice(raw []byte, length int) (v interface{}, off int, ok bo
 func fieldDecodeUint8Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []uint8
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 1)
 	v = b
 	return
 }
@@ -297,7 +297,7 @@ func fieldDecodeUint8Slice(raw []byte, length int) (v interface{}, off int, ok b
 func fieldDecodeInt16Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []int16
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 2)
 	v = b
 	return
 }
@@ -315,7 +315,7 @@ func fieldDecodeInt16SliceSlow(raw []byte, length int) (v interface{}, off int, 
 func fieldDecodeUint16Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []uint16
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 2)
 	v = b
 	return
 }
@@ -337,7 +337,7 @@ func fieldDecodeUint16SliceSlow(raw []byte, length int) (v interface{}, off int,
 func fieldDecodeInt32Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []int32
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 4)
 	v = b
 	return
 }
@@ -355,7 +355,7 @@ func fieldDecodeInt32SliceSlow(raw []byte, length int) (v interface{}, off int, 
 func fieldDecodeUint32Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []uint32
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 4)
 	v = b
 	return
 }
@@ -377,7 +377,7 @@ func fieldDecodeUint32SliceSlow(raw []byte, length int) (v interface{}, off int,
 func fieldDecodeInt64Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []int64
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 8)
 	v = b
 	return
 }
@@ -393,9 +393,9 @@ func fieldDecodeInt64SliceSlow(raw []byte, length int) (v interface{}, off int, 
 }
 
 func fieldDecodeUint64Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
-	var b []int64
+	var b []uint64
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 8)
 	v = b
 	return
 }
@@ -417,7 +417,7 @@ func fieldDecodeUint64SliceSlow(raw []byte, length int) (v interface{}, off int,
 func fieldDecodeFloat32Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []float32
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 4)
 	v = b
 	return
 }
@@ -435,7 +435,7 @@ func fieldDecodeFloat32SliceSlow(raw []byte, length int) (v interface{}, off int
 func fieldDecodeFloat64Slice(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var b []float64
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length)
+	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&b), length, 8)
 	v = b
 	return
 }
@@ -484,7 +484,7 @@ func fieldDecodeTimeSlice(raw []byte, length int) (v interface{}, off int, ok bo
 	s := make([]time.Time, length)
 	totalOff := off
 	for i := 0; i < length; i++ {
-		v, off, ok = fieldDecodeTime(raw, length)
+		v, off, ok = fieldDecodeTime(raw[totalOff:], 0)
 		if !ok {
 			off = 0
 			return
@@ -509,7 +509,7 @@ func fieldDecodeDurationSlice(raw []byte, length int) (v interface{}, off int, o
 	s := make([]time.Duration, length)
 	totalOff := off
 	for i := 0; i < length; i++ {
-		v, off, ok = fieldDecodeDuration(raw, length)
+		v, off, ok = fieldDecodeDuration(raw[totalOff:], 0)
 		if !ok {
 			off = 0
 			return
