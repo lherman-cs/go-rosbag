@@ -3,7 +3,6 @@ package rosbag
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -38,76 +37,32 @@ const (
 	MessageFieldTypeComplex
 )
 
-func newMessageFieldType(b []byte) MessageFieldType {
-	if bytes.Equal(b, []byte("byte")) {
-		return MessageFieldTypeInt8
+var (
+	messageFieldTypeMap = map[string]MessageFieldType{
+		"bool":     MessageFieldTypeBool,
+		"int8":     MessageFieldTypeInt8,
+		"byte":     MessageFieldTypeInt8,
+		"uint8":    MessageFieldTypeUint8,
+		"char":     MessageFieldTypeUint8,
+		"int16":    MessageFieldTypeInt16,
+		"uint16":   MessageFieldTypeUint16,
+		"int32":    MessageFieldTypeInt32,
+		"uint32":   MessageFieldTypeUint32,
+		"int64":    MessageFieldTypeInt64,
+		"uint64":   MessageFieldTypeUint64,
+		"float32":  MessageFieldTypeFloat32,
+		"float64":  MessageFieldTypeFloat64,
+		"string":   MessageFieldTypeString,
+		"time":     MessageFieldTypeTime,
+		"duration": MessageFieldTypeDuration,
 	}
-
-	if bytes.Equal(b, []byte("char")) {
-		return MessageFieldTypeUint8
-	}
-
-	for t := MessageFieldTypeBool; t <= MessageFieldTypeDuration; t++ {
-		if bytes.Equal(b, []byte(t.String())) {
-			return t
-		}
-	}
-
-	return MessageFieldTypeComplex
-}
-
-func (t MessageFieldType) String() string {
-	switch t {
-	case MessageFieldTypeBool:
-		return "bool"
-	case MessageFieldTypeInt8:
-		return "int8"
-	case MessageFieldTypeUint8:
-		return "uint8"
-	case MessageFieldTypeInt16:
-		return "int16"
-	case MessageFieldTypeUint16:
-		return "uint16"
-	case MessageFieldTypeInt32:
-		return "int32"
-	case MessageFieldTypeUint32:
-		return "uint32"
-	case MessageFieldTypeInt64:
-		return "int64"
-	case MessageFieldTypeUint64:
-		return "uint64"
-	case MessageFieldTypeFloat32:
-		return "float32"
-	case MessageFieldTypeFloat64:
-		return "float64"
-	case MessageFieldTypeString:
-		return "string"
-	case MessageFieldTypeTime:
-		return "time"
-	case MessageFieldTypeDuration:
-		return "duration"
-	default:
-		return "invalid"
-	}
-}
+)
 
 type ConnectionHeader struct {
 	Topic             string
 	Type              string
 	MD5Sum            string
 	MessageDefinition MessageDefinition
-}
-
-func (header *ConnectionHeader) String() string {
-	return fmt.Sprintf(`
-================
-topic              : %s
-type               : %s
-md5sum             : %s
-message_definition : 
-
-%s
-`, header.Topic, header.Type, header.MD5Sum, &header.MessageDefinition)
 }
 
 // MessageDefinition is defined here, http://wiki.ros.org/msg
@@ -222,7 +177,11 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 
 		// detect constant
 		idx = bytes.IndexByte(fieldName, '=')
-		msgFieldType := newMessageFieldType(fieldType)
+		msgFieldType, ok := messageFieldTypeMap[string(fieldType)]
+		if !ok {
+			msgFieldType = MessageFieldTypeComplex
+		}
+
 		var constantValue interface{}
 		if idx != -1 {
 			// TODO: parse this constantValue
@@ -258,20 +217,6 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 	return nil
 }
 
-func (def *MessageDefinition) String() string {
-	var sb strings.Builder
-
-	if len(def.Type) > 0 {
-		sb.WriteString(fmt.Sprintf("MSG: %s\n", def.Type))
-	}
-
-	for _, field := range def.Fields {
-		sb.WriteString(field.String())
-	}
-
-	return sb.String()
-}
-
 type MessageFieldDefinition struct {
 	Type    MessageFieldType
 	Name    string
@@ -283,19 +228,6 @@ type MessageFieldDefinition struct {
 	// MsgType is only being used when type is complex. This defines the custom
 	// message type.
 	MsgType *MessageDefinition
-}
-
-func (def *MessageFieldDefinition) String() string {
-	fieldType := def.Type.String()
-	if def.IsArray {
-		if def.ArraySize > 0 {
-			fieldType += fmt.Sprintf("[%d]", def.ArraySize)
-		} else {
-			fieldType += "[]"
-		}
-	}
-
-	return fmt.Sprintf("%s %s\n", fieldType, def.Name)
 }
 
 // findComplexMsg iterates complexMsgs, and find for msgType. msgType can have an optional
