@@ -64,12 +64,14 @@ type Record interface {
 	Op() (Op, error)
 	Header() []byte
 	Data() []byte
+	Close()
 }
 
 type RecordBase struct {
 	// Raw contains: <header_len><header><data_len><data>
 	Raw                []byte
 	HeaderLen, DataLen uint32
+	closeFn            func()
 }
 
 func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
@@ -165,6 +167,12 @@ func (record *RecordBase) Header() []byte {
 func (record *RecordBase) Data() []byte {
 	off := 2*lenInBytes + record.HeaderLen
 	return record.Raw[off : off+record.DataLen]
+}
+
+func (record *RecordBase) Close() {
+	if record.closeFn != nil {
+		record.closeFn()
+	}
 }
 
 func (record *RecordBase) grow(requiredSize uint32) {

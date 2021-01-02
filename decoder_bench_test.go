@@ -26,7 +26,7 @@ func start() {
 	decoder := NewDecoder(f)
 
 	for {
-		record, release, err := decoder.Read()
+		record, err := decoder.Read()
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -39,6 +39,6 @@ func start() {
 			v := make(map[string]interface{})
 			must(record.UnmarshallTo(v))
 		}
-		release()
+		record.Close()
 	}
 }

@@ -48,27 +48,30 @@ func NewDecoder(r io.Reader) *Decoder {
 // Read returns the next record in the rosbag. Next might will return nil record and error
 // at the beginning to mark that the rosbag format version is supported. When, it reaches EOF,
 // Next returns io.EOF error.
-func (decoder *Decoder) Read() (Record, func(), error) {
+func (decoder *Decoder) Read() (Record, error) {
 	if !decoder.checkedVersion {
 		if err := decoder.checkVersion(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		decoder.checkedVersion = true
 	}
 
 	record := recordPool.Get().(*RecordBase)
+	record.closeFn = func() {
+		recordPool.Put(record)
+	}
 	if decoder.chunkReader != nil {
 		specializedRecord, err := decoder.decodeRecord(decoder.chunkReader, record)
 		switch err {
 		case nil:
-			return specializedRecord, func() { recordPool.Put(record) }, nil
+			return specializedRecord, nil
 		case io.EOF:
 			/* explicit ignore */
 		default:
 			// the record is not usable, so recyle it
-			recordPool.Put(record)
-			return nil, nil, err
+			record.Close()
+			return nil, err
 		}
 
 		// at this point, the error must be EOF, need to reset chunkReader and read from the source
@@ -79,11 +82,11 @@ func (decoder *Decoder) Read() (Record, func(), error) {
 	specializedRecord, err := decoder.decodeRecord(decoder.reader, record)
 	if err != nil {
 		// the record is not usable, so recyle it
-		recordPool.Put(record)
-		return nil, nil, err
+		record.Close()
+		return nil, err
 	}
 
-	return specializedRecord, func() { recordPool.Put(record) }, nil
+	return specializedRecord, nil
 }
 
 func (decoder *Decoder) handleChunk(record *RecordBase) (Record, error) {

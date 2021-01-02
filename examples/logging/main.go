@@ -20,7 +20,7 @@ func main() {
 
 	decoder := rosbag.NewDecoder(f)
 	for {
-		record, release, err := decoder.Read()
+		record, err := decoder.Read()
 		must(err)
 
 		switch record := record.(type) {
@@ -30,6 +30,6 @@ func main() {
 			pp.Println(v)
 		}
 
-		release()
+		record.Close()
 	}
 }
