@@ -281,7 +281,11 @@ func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, [
 }
 
 func decodeFieldComplex(field *MessageFieldDefinition, raw []byte, getFn func() map[string]interface{}) (interface{}, []byte, error) {
-	var length int = 1
+	if !field.IsArray {
+		return decodeMessageData(field.MsgType, raw, getFn)
+	}
+
+	var length int
 	if field.IsArray {
 		var off int
 		var ok bool
@@ -301,9 +305,5 @@ func decodeFieldComplex(field *MessageFieldDefinition, raw []byte, getFn func() 
 		}
 	}
 
-	if field.IsArray {
-		return vs, raw, nil
-	}
-
-	return vs[0], raw, nil
+	return vs, raw, nil
 }

@@ -1,1 +1,1 @@
-BenchmarkE2E-8                10         107982844 ns/op         6383554 B/op     229661 allocs/op
+BenchmarkE2E-8                10         110882837 ns/op         6130208 B/op     215006 allocs/op
