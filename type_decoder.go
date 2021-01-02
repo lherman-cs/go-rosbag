@@ -219,7 +219,16 @@ func fieldDecodeFloat64(raw []byte, length int) (v interface{}, off int, ok bool
 func fieldDecodeString(raw []byte, length int) (v interface{}, off int, ok bool) {
 	var s string
 
-	off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&s), length)
+	length, off, ok = fieldDecodeLength(raw, length)
+	if !ok {
+		return
+	}
+
+	sl := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	sl.Data = uintptr(unsafe.Pointer(&raw[off]))
+	sl.Len = length
+	off += length
+	ok = true
 	v = s
 	return
 }
@@ -450,12 +459,13 @@ func fieldDecodeStringSlice(raw []byte, length int) (v interface{}, off int, ok 
 	s := make([]string, length)
 	totalOff := off
 	for i := 0; i < length; i++ {
-		off, ok = fieldDecodeBasicSlice(raw, unsafe.Pointer(&s[i]), 0)
+		v, off, ok = fieldDecodeString(raw[totalOff:], 0)
 		if !ok {
 			off = 0
 			return
 		}
 
+		s[i] = v.(string)
 		totalOff += off
 	}
 
