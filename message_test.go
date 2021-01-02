@@ -288,8 +288,7 @@ string stringConst  =  lukas herman# This comment should not be included in the 
 		t.Fatal(err)
 	}
 
-	actualMap := make(map[string]interface{})
-	_, err = decodeMessageData(&msgDef, msgDataRaw, actualMap)
+	actualMap, _, err := decodeMessageData(&msgDef, msgDataRaw, getClearedComplexData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,8 +319,7 @@ uint8[] pixels
 
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		data := make(map[string]interface{})
-		_, err = decodeMessageData(&msgDef, msgDataRaw, data)
+		_, _, err := decodeMessageData(&msgDef, msgDataRaw, getClearedComplexData)
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -24,6 +25,22 @@ var (
 	}
 	endian = binary.LittleEndian
 )
+
+var (
+	complexDataPool = sync.Pool{
+		New: func() interface{} {
+			return make(map[string]interface{})
+		},
+	}
+)
+
+func getClearedComplexData() map[string]interface{} {
+	m := complexDataPool.Get().(map[string]interface{})
+	for k := range m {
+		delete(m, k)
+	}
+	return m
+}
 
 type Op uint8
 
@@ -252,7 +269,8 @@ func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
 
 type RecordMessageData struct {
 	*RecordBase
-	connHdr *ConnectionHeader
+	connHdr         *ConnectionHeader
+	complexDataRefs []map[string]interface{}
 }
 
 func (record *RecordMessageData) Conn() (uint32, error) {
@@ -267,9 +285,25 @@ func (record *RecordMessageData) ConnectionHeader() *ConnectionHeader {
 	return record.connHdr
 }
 
-func (record *RecordMessageData) UnmarshallTo(v map[string]interface{}) error {
-	_, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), v)
-	return err
+func (record *RecordMessageData) Transform() (map[string]interface{}, error) {
+	m, _, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), func() map[string]interface{} {
+		clearedData := getClearedComplexData()
+		record.complexDataRefs = append(record.complexDataRefs, clearedData)
+		return clearedData
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+func (record *RecordMessageData) Close() {
+	for _, ref := range record.complexDataRefs {
+		complexDataPool.Put(ref)
+	}
+
+	record.RecordBase.Close()
 }
 
 type RecordIndexData struct {

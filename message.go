@@ -241,24 +241,25 @@ func findComplexMsg(complexMsgs []*MessageDefinition, msgType string) *MessageDe
 	return nil
 }
 
-func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]interface{}) ([]byte, error) {
+func decodeMessageData(def *MessageDefinition, raw []byte, getFn func() map[string]interface{}) (map[string]interface{}, []byte, error) {
 	var err error
+	data := getFn()
 	for _, field := range def.Fields {
 		// Const value, no need to parse, simply fill in the data
 		if field.Value != nil {
 			data[field.Name] = field.Value
 		} else if field.Type == MessageFieldTypeComplex {
-			data[field.Name], raw, err = decodeFieldComplex(field, raw)
+			data[field.Name], raw, err = decodeFieldComplex(field, raw, getFn)
 		} else {
 			data[field.Name], raw, err = decodeFieldBasic(field, raw)
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 
-	return raw, nil
+	return data, raw, nil
 }
 
 func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
@@ -279,7 +280,7 @@ func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, [
 	return v, raw[off:], nil
 }
 
-func decodeFieldComplex(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
+func decodeFieldComplex(field *MessageFieldDefinition, raw []byte, getFn func() map[string]interface{}) (interface{}, []byte, error) {
 	var length int = 1
 	if field.IsArray {
 		var off int
@@ -294,8 +295,7 @@ func decodeFieldComplex(field *MessageFieldDefinition, raw []byte) (interface{},
 	var err error
 	vs := make([]map[string]interface{}, length)
 	for i := range vs {
-		vs[i] = make(map[string]interface{})
-		raw, err = decodeMessageData(field.MsgType, raw, vs[i])
+		vs[i], raw, err = decodeMessageData(field.MsgType, raw, getFn)
 		if err != nil {
 			return nil, raw, err
 		}

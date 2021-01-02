@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 
-	"github.com/k0kubun/pp"
 	"github.com/lherman-cs/go-rosbag"
 )
 
@@ -25,9 +24,9 @@ func main() {
 
 		switch record := record.(type) {
 		case *rosbag.RecordMessageData:
-			v := make(map[string]interface{})
-			must(record.UnmarshallTo(v))
-			pp.Println(v)
+			_, err := record.Transform()
+			must(err)
+			// pp.Println(v)
 		}
 
 		record.Close()
