@@ -2,7 +2,6 @@ package rosbag
 
 import (
 	"math"
-	"math/bits"
 	"reflect"
 	"time"
 	"unsafe"
@@ -298,17 +297,17 @@ func fieldDecodeInt16Slice(raw []byte, length int) (v interface{}, off int, ok b
 }
 
 func fieldDecodeInt16SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint16Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint16)
-	newArr := make([]int16, len(arr))
-	for i, item := range arr {
-		newArr[i] = int16(bits.ReverseBytes16(item))
+	arr := make([]int16, length)
+	for i := range arr {
+		arr[i] = int16(endian.Uint16(raw[off:]))
+		off += 2
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -321,17 +320,17 @@ func fieldDecodeUint16Slice(raw []byte, length int) (v interface{}, off int, ok 
 }
 
 func fieldDecodeUint16SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint16Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint16)
-	newArr := make([]uint16, len(arr))
-	for i, item := range arr {
-		newArr[i] = bits.ReverseBytes16(item)
+	arr := make([]uint16, length)
+	for i := range arr {
+		arr[i] = endian.Uint16(raw[off:])
+		off += 2
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -344,17 +343,17 @@ func fieldDecodeInt32Slice(raw []byte, length int) (v interface{}, off int, ok b
 }
 
 func fieldDecodeInt32SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint32Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint32)
-	newArr := make([]int32, len(arr))
-	for i, item := range arr {
-		newArr[i] = int32(bits.ReverseBytes32(item))
+	arr := make([]int32, length)
+	for i := range arr {
+		arr[i] = int32(endian.Uint32(raw[off:]))
+		off += 4
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -367,17 +366,17 @@ func fieldDecodeUint32Slice(raw []byte, length int) (v interface{}, off int, ok 
 }
 
 func fieldDecodeUint32SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint32Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint32)
-	newArr := make([]uint32, len(arr))
-	for i, item := range arr {
-		newArr[i] = bits.ReverseBytes32(item)
+	arr := make([]uint32, length)
+	for i := range arr {
+		arr[i] = endian.Uint32(raw[off:])
+		off += 4
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -390,17 +389,17 @@ func fieldDecodeInt64Slice(raw []byte, length int) (v interface{}, off int, ok b
 }
 
 func fieldDecodeInt64SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint64Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint64)
-	newArr := make([]int64, len(arr))
-	for i, item := range arr {
-		newArr[i] = int64(bits.ReverseBytes64(item))
+	arr := make([]int64, length)
+	for i := range arr {
+		arr[i] = int64(endian.Uint64(raw[off:]))
+		off += 8
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -413,17 +412,17 @@ func fieldDecodeUint64Slice(raw []byte, length int) (v interface{}, off int, ok 
 }
 
 func fieldDecodeUint64SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint64Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint64)
-	newArr := make([]uint64, len(arr))
-	for i, item := range arr {
-		newArr[i] = bits.ReverseBytes64(item)
+	arr := make([]uint64, length)
+	for i := range arr {
+		arr[i] = endian.Uint64(raw[off:])
+		off += 8
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -436,18 +435,17 @@ func fieldDecodeFloat32Slice(raw []byte, length int) (v interface{}, off int, ok
 }
 
 func fieldDecodeFloat32SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint32Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint32)
-	newArr := make([]float32, len(arr))
-
-	for i, item := range arr {
-		newArr[i] = math.Float32frombits(bits.ReverseBytes32(item))
+	arr := make([]float32, length)
+	for i := range arr {
+		arr[i] = math.Float32frombits(endian.Uint32(raw[off:]))
+		off += 4
 	}
-	v = newArr
+	v = arr
 	return
 }
 
@@ -460,18 +458,17 @@ func fieldDecodeFloat64Slice(raw []byte, length int) (v interface{}, off int, ok
 }
 
 func fieldDecodeFloat64SliceSlow(raw []byte, length int) (v interface{}, off int, ok bool) {
-	v, off, ok = fieldDecodeUint64Slice(raw, length)
+	length, off, ok = fieldDecodeLength(raw, length)
 	if !ok {
 		return
 	}
 
-	arr := v.([]uint64)
-	newArr := make([]float64, len(arr))
-
-	for i, item := range arr {
-		newArr[i] = math.Float64frombits(bits.ReverseBytes64(item))
+	arr := make([]float64, length)
+	for i := range arr {
+		arr[i] = math.Float64frombits(endian.Uint64(raw[off:]))
+		off += 8
 	}
-	v = newArr
+	v = arr
 	return
 }
 
