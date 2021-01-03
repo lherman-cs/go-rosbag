@@ -23,7 +23,9 @@ jobs:
         uses: actions/setup-go@v2
         with:
           go-version: ${{ matrix.go }}
-      - name: Run test suite
+      - name: Run big endian tests 
+        run: go test -v -race -tags=integration
+      - name: Run little endian tests
         run: go test -v -race -coverprofile=coverage.txt -covermode=atomic
       - uses: codecov/codecov-action@v1	
         if: matrix.os == 'ubuntu-18.04' && matrix.go == '1.15'

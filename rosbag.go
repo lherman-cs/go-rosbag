@@ -2,7 +2,6 @@ package rosbag
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -23,7 +22,6 @@ var (
 		Major: 2,
 		Minor: 0,
 	}
-	endian = binary.LittleEndian
 )
 
 var (
