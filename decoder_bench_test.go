@@ -36,7 +36,8 @@ func start() {
 
 		switch record := record.(type) {
 		case *RecordMessageData:
-			_, err := record.Transform()
+			data := make(map[string]interface{})
+			err := record.Transform(data)
 			must(err)
 		}
 		record.Close()
