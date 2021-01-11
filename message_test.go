@@ -202,80 +202,214 @@ float64 float64Const = 0.321
 string stringConst  =  lukas herman# This comment should not be included in the string
 `)
 
-	/*
+	type Const struct {
+		BoolConst    bool    `rosbag:"boolConst"`
+		Int8Const    int8    `rosbag:"int8Const"`
+		Uint8Const   uint8   `rosbag:"uint8Const"`
+		Int16Const   int16   `rosbag:"int16Const"`
+		Uint16Const  uint16  `rosbag:"uint16Const"`
+		Int32Const   int32   `rosbag:"int32Const"`
+		Uint32Const  uint32  `rosbag:"uint32Const"`
+		Int64Const   int64   `rosbag:"int64Const"`
+		Uint64Const  uint64  `rosbag:"uint64Const"`
+		Float32Const float32 `rosbag:"float32Const"`
+		Float64Const float64 `rosbag:"float64Const"`
+		StringConst  string  `rosbag:"stringConst"`
+	}
 
+	type Person struct {
+		Age uint8 `rosbag:"age"`
+	}
 
-	 */
+	type Data struct {
+		Bool     bool          `rosbag:"bool"`
+		Int8     int8          `rosbag:"int8"`
+		Uint8    uint8         `rosbag:"uint8"`
+		Int16    int16         `rosbag:"int16"`
+		Uint16   uint16        `rosbag:"uint16"`
+		Int32    int32         `rosbag:"int32"`
+		Uint32   uint32        `rosbag:"uint32"`
+		Int64    int64         `rosbag:"int64"`
+		Uint64   uint64        `rosbag:"uint64"`
+		Float32  float32       `rosbag:"float32"`
+		Float64  float64       `rosbag:"float64"`
+		String   string        `rosbag:"string"`
+		Time     time.Time     `rosbag:"time"`
+		Duration time.Duration `rosbag:"duration"`
+		Person   Person        `rosbag:"person"`
+
+		BoolSlice     []bool          `rosbag:"boolSlice"`
+		Int8Slice     []int8          `rosbag:"int8Slice"`
+		Uint8Slice    []uint8         `rosbag:"uint8Slice"`
+		Int16Slice    []int16         `rosbag:"int16Slice"`
+		Uint16Slice   []uint16        `rosbag:"uint16Slice"`
+		Int32Slice    []int32         `rosbag:"int32Slice"`
+		Uint32Slice   []uint32        `rosbag:"uint32Slice"`
+		Int64Slice    []int64         `rosbag:"int64Slice"`
+		Uint64Slice   []uint64        `rosbag:"uint64Slice"`
+		Float32Slice  []float32       `rosbag:"float32Slice"`
+		Float64Slice  []float64       `rosbag:"float64Slice"`
+		StringSlice   []string        `rosbag:"stringSlice"`
+		TimeSlice     []time.Time     `rosbag:"timeSlice"`
+		DurationSlice []time.Duration `rosbag:"durationSlice"`
+		PersonSlice   []Person        `rosbag:"personSlice"`
+
+		BoolArray     []bool          `rosbag:"boolArray"`
+		Int8Array     []int8          `rosbag:"int8Array"`
+		Uint8Array    []uint8         `rosbag:"uint8Array"`
+		Int16Array    []int16         `rosbag:"int16Array"`
+		Uint16Array   []uint16        `rosbag:"uint16Array"`
+		Int32Array    []int32         `rosbag:"int32Array"`
+		Uint32Array   []uint32        `rosbag:"uint32Array"`
+		Int64Array    []int64         `rosbag:"int64Array"`
+		Uint64Array   []uint64        `rosbag:"uint64Array"`
+		Float32Array  []float32       `rosbag:"float32Array"`
+		Float64Array  []float64       `rosbag:"float64Array"`
+		StringArray   []string        `rosbag:"stringArray"`
+		TimeArray     []time.Time     `rosbag:"timeArray"`
+		DurationArray []time.Duration `rosbag:"durationArray"`
+		PersonArray   []Person        `rosbag:"personArray"`
+
+		Const Const `rosbag:"const"`
+	}
+
+	expectedStruct := Data{
+		Bool:     true,
+		Int8:     math.MinInt8,
+		Uint8:    math.MaxUint8,
+		Int16:    math.MinInt16,
+		Uint16:   math.MaxUint16,
+		Int32:    math.MinInt32,
+		Uint32:   math.MaxInt32,
+		Int64:    math.MinInt64,
+		Uint64:   math.MaxUint64,
+		Float32:  math.MaxFloat32 / 10,
+		Float64:  math.MaxFloat64 / 10,
+		String:   "lukas",
+		Time:     time.Unix(1, 10),
+		Duration: time.Second + time.Nanosecond,
+		Person: Person{
+			Age: 24,
+		},
+		BoolSlice:     []bool{true, false},
+		Int8Slice:     []int8{-1, 1},
+		Uint8Slice:    []uint8{1, 2},
+		Int16Slice:    []int16{-1, 1},
+		Uint16Slice:   []uint16{1, 2},
+		Int32Slice:    []int32{-1, 1},
+		Uint32Slice:   []uint32{1, 2},
+		Int64Slice:    []int64{-1, 1},
+		Uint64Slice:   []uint64{1, 2},
+		Float32Slice:  []float32{0.123, 0.3312, 0.111},
+		Float64Slice:  []float64{-0.123, 0.3312, -0.111},
+		StringSlice:   []string{"lukas"},
+		TimeSlice:     []time.Time{time.Unix(10, 1000), time.Unix(1000, 2132131)},
+		DurationSlice: []time.Duration{time.Second - time.Millisecond, time.Microsecond + time.Nanosecond},
+		PersonSlice: []Person{
+			{Age: 26},
+			{Age: 100},
+		},
+		BoolArray:     []bool{true, false},
+		Int8Array:     []int8{-1, 1},
+		Uint8Array:    []uint8{1, 2},
+		Int16Array:    []int16{-1, 1},
+		Uint16Array:   []uint16{1, 2},
+		Int32Array:    []int32{-1, 1},
+		Uint32Array:   []uint32{1, 2},
+		Int64Array:    []int64{-1, 1},
+		Uint64Array:   []uint64{1, 2},
+		Float32Array:  []float32{0.123, 0.3312, 0.111},
+		Float64Array:  []float64{-0.123, 0.3312, -0.111},
+		StringArray:   []string{"lukas"},
+		TimeArray:     []time.Time{time.Unix(10, 1000), time.Unix(1000, 2132131)},
+		DurationArray: []time.Duration{time.Second - time.Millisecond, time.Microsecond + time.Nanosecond},
+		PersonArray: []Person{
+			{Age: 26},
+			{Age: 100},
+		},
+		Const: Const{
+			BoolConst:    true,
+			Int8Const:    int8(-1),
+			Uint8Const:   uint8(1),
+			Int16Const:   int16(-1),
+			Uint16Const:  uint16(1),
+			Int32Const:   int32(-1),
+			Uint32Const:  uint32(1),
+			Int64Const:   int64(-1),
+			Uint64Const:  uint64(1),
+			Float32Const: float32(0.123),
+			Float64Const: float64(0.321),
+			StringConst:  "lukas herman",
+		},
+	}
 
 	expectedFields := []TestField{
-		{Name: "bool", Value: true},
-		{Name: "int8", Value: int8(math.MinInt8)},
-		{Name: "uint8", Value: uint8(math.MaxUint8)},
-		{Name: "int16", Value: int16(math.MinInt16)},
-		{Name: "uint16", Value: uint16(math.MaxUint16)},
-		{Name: "int32", Value: int32(math.MinInt32)},
-		{Name: "uint32", Value: uint32(math.MaxUint32)},
-		{Name: "int64", Value: int64(math.MinInt64)},
-		{Name: "uint64", Value: uint64(math.MaxUint64)},
-		{Name: "float32", Value: float32(math.MaxFloat32 / 10)},
-		{Name: "float64", Value: float64(math.MaxFloat64 / 10)},
-		{Name: "string", Value: "lukas"},
-		{Name: "time", Value: time.Unix(1, 10)},
-		{Name: "duration", Value: time.Second + time.Nanosecond},
+		{Name: "bool", Value: expectedStruct.Bool},
+		{Name: "int8", Value: expectedStruct.Int8},
+		{Name: "uint8", Value: expectedStruct.Uint8},
+		{Name: "int16", Value: expectedStruct.Int16},
+		{Name: "uint16", Value: expectedStruct.Uint16},
+		{Name: "int32", Value: expectedStruct.Int32},
+		{Name: "uint32", Value: expectedStruct.Uint32},
+		{Name: "int64", Value: expectedStruct.Int64},
+		{Name: "uint64", Value: expectedStruct.Uint64},
+		{Name: "float32", Value: expectedStruct.Float32},
+		{Name: "float64", Value: expectedStruct.Float64},
+		{Name: "string", Value: expectedStruct.String},
+		{Name: "time", Value: expectedStruct.Time},
+		{Name: "duration", Value: expectedStruct.Duration},
 		{Name: "person", Value: []TestField{
-			{Name: "age", Value: uint8(24)},
+			{Name: "age", Value: expectedStruct.Person.Age},
 		}},
-		{Name: "boolSlice", Value: []bool{true, false}, ArraySize: 2, Dynamic: true},
-		{Name: "int8Slice", Value: []int8{-1, 1}, ArraySize: 2, Dynamic: true},
-		{Name: "uint8Slice", Value: []uint8{1, 2}, ArraySize: 2, Dynamic: true},
-		{Name: "int16Slice", Value: []int16{-1, 1}, ArraySize: 2, Dynamic: true},
-		{Name: "uint16Slice", Value: []uint16{1, 2}, ArraySize: 2, Dynamic: true},
-		{Name: "int32Slice", Value: []int32{-1, 1}, ArraySize: 2, Dynamic: true},
-		{Name: "uint32Slice", Value: []uint32{1, 2}, ArraySize: 2, Dynamic: true},
-		{Name: "int64Slice", Value: []int64{-1, 1}, ArraySize: 2, Dynamic: true},
-		{Name: "uint64Slice", Value: []uint64{1, 2}, ArraySize: 2, Dynamic: true},
-		{Name: "float32Slice", Value: []float32{0.123, 0.3312, 0.111}, ArraySize: 3, Dynamic: true},
-		{Name: "float64Slice", Value: []float64{-0.123, 0.3312, -0.111}, ArraySize: 3, Dynamic: true},
-		{Name: "stringSlice", Value: []string{"lukas"}, ArraySize: 1, Dynamic: true},
-		// 1,000,000,000,000
-		{Name: "timeSlice", Value: []time.Time{time.Unix(10, 1000), time.Unix(1000, 2132131)}, ArraySize: 2, Dynamic: true},
-		{Name: "durationSlice", Value: []time.Duration{time.Second, time.Microsecond}, ArraySize: 2, Dynamic: true},
-		{Name: "personSlice", ArraySize: 2, Dynamic: true, Value: [][]TestField{
-			{{Name: "age", Value: uint8(26)}},
-			{{Name: "age", Value: uint8(100)}},
+		{Name: "boolSlice", Value: expectedStruct.BoolSlice, ArraySize: len(expectedStruct.BoolSlice), Dynamic: true},
+		{Name: "int8Slice", Value: expectedStruct.Int8Slice, ArraySize: len(expectedStruct.Int8Slice), Dynamic: true},
+		{Name: "uint8Slice", Value: expectedStruct.Uint8Slice, ArraySize: len(expectedStruct.Uint8Slice), Dynamic: true},
+		{Name: "int16Slice", Value: expectedStruct.Int16Slice, ArraySize: len(expectedStruct.Int16Slice), Dynamic: true},
+		{Name: "uint16Slice", Value: expectedStruct.Uint16Slice, ArraySize: len(expectedStruct.Uint16Slice), Dynamic: true},
+		{Name: "int32Slice", Value: expectedStruct.Int32Slice, ArraySize: len(expectedStruct.Int32Slice), Dynamic: true},
+		{Name: "uint32Slice", Value: expectedStruct.Uint32Slice, ArraySize: len(expectedStruct.Int32Slice), Dynamic: true},
+		{Name: "int64Slice", Value: expectedStruct.Int64Slice, ArraySize: len(expectedStruct.Int64Slice), Dynamic: true},
+		{Name: "uint64Slice", Value: expectedStruct.Uint64Slice, ArraySize: len(expectedStruct.Uint64Slice), Dynamic: true},
+		{Name: "float32Slice", Value: expectedStruct.Float32Slice, ArraySize: len(expectedStruct.Float32Slice), Dynamic: true},
+		{Name: "float64Slice", Value: expectedStruct.Float64Slice, ArraySize: len(expectedStruct.Float64Slice), Dynamic: true},
+		{Name: "stringSlice", Value: expectedStruct.StringSlice, ArraySize: len(expectedStruct.StringSlice), Dynamic: true},
+		{Name: "timeSlice", Value: expectedStruct.TimeSlice, ArraySize: len(expectedStruct.TimeSlice), Dynamic: true},
+		{Name: "durationSlice", Value: expectedStruct.DurationSlice, ArraySize: len(expectedStruct.DurationSlice), Dynamic: true},
+		{Name: "personSlice", ArraySize: len(expectedStruct.PersonSlice), Dynamic: true, Value: [][]TestField{
+			{{Name: "age", Value: expectedStruct.PersonSlice[0].Age}},
+			{{Name: "age", Value: expectedStruct.PersonSlice[1].Age}},
 		}},
-		{Name: "boolArray", Value: []bool{true, false}, ArraySize: 2},
-		{Name: "int8Array", Value: []int8{-1, 1}, ArraySize: 2},
-		{Name: "uint8Array", Value: []uint8{1, 2}, ArraySize: 2},
-		{Name: "int16Array", Value: []int16{-1, 1}, ArraySize: 2},
-		{Name: "uint16Array", Value: []uint16{1, 2}, ArraySize: 2},
-		{Name: "int32Array", Value: []int32{-1, 1}, ArraySize: 2},
-		{Name: "uint32Array", Value: []uint32{1, 2}, ArraySize: 2},
-		{Name: "int64Array", Value: []int64{-1, 1}, ArraySize: 2},
-		{Name: "uint64Array", Value: []uint64{1, 2}, ArraySize: 2},
-		{Name: "float32Array", Value: []float32{0.123, 0.3312, 0.111}, ArraySize: 3},
-		{Name: "float64Array", Value: []float64{-0.123, 0.3312, -0.111}, ArraySize: 3},
-		{Name: "stringArray", Value: []string{"lukas"}, ArraySize: 1},
-		// 1,000,000,000,000
-		{Name: "timeArray", Value: []time.Time{time.Unix(10, 1000), time.Unix(1000, 2132131)}, ArraySize: 2},
-		{Name: "durationArray", Value: []time.Duration{time.Second, time.Microsecond}, ArraySize: 2},
-		{Name: "personArray", ArraySize: 2, Value: [][]TestField{
-			{{Name: "age", Value: uint8(26)}},
-			{{Name: "age", Value: uint8(100)}},
+		{Name: "boolArray", Value: expectedStruct.BoolArray, ArraySize: len(expectedStruct.BoolArray), Dynamic: false},
+		{Name: "int8Array", Value: expectedStruct.Int8Array, ArraySize: len(expectedStruct.Int8Array), Dynamic: false},
+		{Name: "uint8Array", Value: expectedStruct.Uint8Array, ArraySize: len(expectedStruct.Uint8Array), Dynamic: false},
+		{Name: "int16Array", Value: expectedStruct.Int16Array, ArraySize: len(expectedStruct.Int16Array), Dynamic: false},
+		{Name: "uint16Array", Value: expectedStruct.Uint16Array, ArraySize: len(expectedStruct.Uint16Array), Dynamic: false},
+		{Name: "int32Array", Value: expectedStruct.Int32Array, ArraySize: len(expectedStruct.Int32Array), Dynamic: false},
+		{Name: "uint32Array", Value: expectedStruct.Uint32Array, ArraySize: len(expectedStruct.Int32Array), Dynamic: false},
+		{Name: "int64Array", Value: expectedStruct.Int64Array, ArraySize: len(expectedStruct.Int64Array), Dynamic: false},
+		{Name: "uint64Array", Value: expectedStruct.Uint64Array, ArraySize: len(expectedStruct.Uint64Array), Dynamic: false},
+		{Name: "float32Array", Value: expectedStruct.Float32Array, ArraySize: len(expectedStruct.Float32Array), Dynamic: false},
+		{Name: "float64Array", Value: expectedStruct.Float64Array, ArraySize: len(expectedStruct.Float64Array), Dynamic: false},
+		{Name: "stringArray", Value: expectedStruct.StringArray, ArraySize: len(expectedStruct.StringArray), Dynamic: false},
+		{Name: "timeArray", Value: expectedStruct.TimeArray, ArraySize: len(expectedStruct.TimeArray), Dynamic: false},
+		{Name: "durationArray", Value: expectedStruct.DurationArray, ArraySize: len(expectedStruct.DurationArray), Dynamic: false},
+		{Name: "personArray", ArraySize: len(expectedStruct.PersonArray), Dynamic: false, Value: [][]TestField{
+			{{Name: "age", Value: expectedStruct.PersonArray[0].Age}},
+			{{Name: "age", Value: expectedStruct.PersonArray[1].Age}},
 		}},
 		{Name: "const", Value: []TestField{
-			{Name: "boolConst", Value: true, Const: true},
-			{Name: "int8Const", Value: int8(-1), Const: true},
-			{Name: "uint8Const", Value: uint8(1), Const: true},
-			{Name: "int16Const", Value: int16(-1), Const: true},
-			{Name: "uint16Const", Value: uint16(1), Const: true},
-			{Name: "int32Const", Value: int32(-1), Const: true},
-			{Name: "uint32Const", Value: uint32(1), Const: true},
-			{Name: "int64Const", Value: int64(-1), Const: true},
-			{Name: "uint64Const", Value: uint64(1), Const: true},
-			{Name: "float32Const", Value: float32(0.123), Const: true},
-			{Name: "float64Const", Value: float64(0.321), Const: true},
-			{Name: "stringConst", Value: "lukas herman", Const: true},
+			{Name: "boolConst", Value: expectedStruct.Const.BoolConst, Const: true},
+			{Name: "int8Const", Value: expectedStruct.Const.Int8Const, Const: true},
+			{Name: "uint8Const", Value: expectedStruct.Const.Uint8Const, Const: true},
+			{Name: "int16Const", Value: expectedStruct.Const.Int16Const, Const: true},
+			{Name: "uint16Const", Value: expectedStruct.Const.Uint16Const, Const: true},
+			{Name: "int32Const", Value: expectedStruct.Const.Int32Const, Const: true},
+			{Name: "uint32Const", Value: expectedStruct.Const.Uint32Const, Const: true},
+			{Name: "int64Const", Value: expectedStruct.Const.Int64Const, Const: true},
+			{Name: "uint64Const", Value: expectedStruct.Const.Uint64Const, Const: true},
+			{Name: "float32Const", Value: expectedStruct.Const.Float32Const, Const: true},
+			{Name: "float64Const", Value: expectedStruct.Const.Float64Const, Const: true},
+			{Name: "stringConst", Value: expectedStruct.Const.StringConst, Const: true},
 		}},
 	}
 
@@ -295,6 +429,16 @@ string stringConst  =  lukas herman# This comment should not be included in the 
 	}
 
 	if diff := cmp.Diff(expectedMap, actualMap); diff != "" {
+		t.Fatal(diff)
+	}
+
+	var actualStruct Data
+	_, err = decodeMessageData(&msgDef, msgDataRaw, &actualStruct)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff(expectedStruct, actualStruct); diff != "" {
 		t.Fatal(diff)
 	}
 }

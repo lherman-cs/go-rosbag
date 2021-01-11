@@ -265,7 +265,7 @@ func (record *RecordMessageData) ConnectionHeader() *ConnectionHeader {
 	return record.connHdr
 }
 
-func (record *RecordMessageData) Transform(data map[string]interface{}) error {
+func (record *RecordMessageData) Transform(data interface{}) error {
 	_, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), data)
 	if err != nil {
 		return err
