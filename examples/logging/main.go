@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"github.com/k0kubun/pp"
 	"github.com/lherman-cs/go-rosbag"
 )
 
@@ -27,7 +28,7 @@ func main() {
 			data := make(map[string]interface{})
 			err = record.Transform(data)
 			must(err)
-			// pp.Println(v)
+			pp.Println(data)
 		}
 
 		record.Close()

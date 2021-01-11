@@ -202,28 +202,65 @@ float64 float64Const = 0.321
 string stringConst  =  lukas herman# This comment should not be included in the string
 `)
 
-	/*
+	type Person struct {
+		Age uint8 `rosbag:"uint8"`
+	}
 
+	type Data struct {
+		Bool     bool          `rosbag:"bool"`
+		Int8     int8          `rosbag:"int8"`
+		Uint8    uint8         `rosbag:"uint8"`
+		Int16    int16         `rosbag:"int16"`
+		Uint16   uint16        `rosbag:"uint16"`
+		Int32    int32         `rosbag:"int32"`
+		Uint32   uint32        `rosbag:"uint32"`
+		Int64    int64         `rosbag:"int64"`
+		Uint64   uint64        `rosbag:"uint64"`
+		Float32  float32       `rosbag:"float32"`
+		Float64  float64       `rosbag:"float64"`
+		String   string        `rosbag:"string"`
+		Time     time.Time     `rosbag:"time"`
+		Duration time.Duration `rosbag:"duration"`
+		Person   Person        `rosbag:"person"`
+	}
 
-	 */
+	expectedStruct := Data{
+		Bool:     true,
+		Int8:     math.MinInt8,
+		Uint8:    math.MaxUint8,
+		Int16:    math.MinInt16,
+		Uint16:   math.MaxUint16,
+		Int32:    math.MinInt32,
+		Uint32:   math.MaxInt32,
+		Int64:    math.MinInt64,
+		Uint64:   math.MaxUint64,
+		Float32:  math.MaxFloat32 / 10,
+		Float64:  math.MaxFloat64 / 10,
+		String:   "lukas",
+		Time:     time.Unix(1, 10),
+		Duration: time.Second + time.Nanosecond,
+		Person: Person{
+			Age: 24,
+		},
+	}
 
 	expectedFields := []TestField{
-		{Name: "bool", Value: true},
-		{Name: "int8", Value: int8(math.MinInt8)},
-		{Name: "uint8", Value: uint8(math.MaxUint8)},
-		{Name: "int16", Value: int16(math.MinInt16)},
-		{Name: "uint16", Value: uint16(math.MaxUint16)},
-		{Name: "int32", Value: int32(math.MinInt32)},
-		{Name: "uint32", Value: uint32(math.MaxUint32)},
-		{Name: "int64", Value: int64(math.MinInt64)},
-		{Name: "uint64", Value: uint64(math.MaxUint64)},
-		{Name: "float32", Value: float32(math.MaxFloat32 / 10)},
-		{Name: "float64", Value: float64(math.MaxFloat64 / 10)},
-		{Name: "string", Value: "lukas"},
-		{Name: "time", Value: time.Unix(1, 10)},
-		{Name: "duration", Value: time.Second + time.Nanosecond},
+		{Name: "bool", Value: expectedStruct.Bool},
+		{Name: "int8", Value: expectedStruct.Int8},
+		{Name: "uint8", Value: expectedStruct.Uint8},
+		{Name: "int16", Value: expectedStruct.Int16},
+		{Name: "uint16", Value: expectedStruct.Uint16},
+		{Name: "int32", Value: expectedStruct.Int32},
+		{Name: "uint32", Value: expectedStruct.Uint32},
+		{Name: "int64", Value: expectedStruct.Int64},
+		{Name: "uint64", Value: expectedStruct.Uint64},
+		{Name: "float32", Value: expectedStruct.Float32},
+		{Name: "float64", Value: expectedStruct.Float64},
+		{Name: "string", Value: expectedStruct.String},
+		{Name: "time", Value: expectedStruct.Time},
+		{Name: "duration", Value: expectedStruct.Duration},
 		{Name: "person", Value: []TestField{
-			{Name: "age", Value: uint8(24)},
+			{Name: "age", Value: expectedStruct.Person.Age},
 		}},
 		{Name: "boolSlice", Value: []bool{true, false}, ArraySize: 2, Dynamic: true},
 		{Name: "int8Slice", Value: []int8{-1, 1}, ArraySize: 2, Dynamic: true},
@@ -295,6 +332,16 @@ string stringConst  =  lukas herman# This comment should not be included in the 
 	}
 
 	if diff := cmp.Diff(expectedMap, actualMap); diff != "" {
+		t.Fatal(diff)
+	}
+
+	var actualStruct Data
+	_, err = decodeMessageData(&msgDef, msgDataRaw, &actualStruct)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff(expectedStruct, actualStruct); diff != "" {
 		t.Fatal(diff)
 	}
 }

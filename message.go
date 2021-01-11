@@ -3,6 +3,8 @@ package rosbag
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -15,6 +17,7 @@ var (
 	errInvalidFormat     = errors.New("invalid message format")
 	errUnresolvedMsgType = errors.New("failed to resolve a complex message type")
 	errInvalidConstType  = errors.New("invalid const type")
+	errInvalidDataType   = errors.New("data must be a map[string]interface{} or a pointer to a struct")
 )
 
 type MessageFieldType uint8
@@ -241,18 +244,105 @@ func findComplexMsg(complexMsgs []*MessageDefinition, msgType string) *MessageDe
 	return nil
 }
 
-func decodeMessageData(def *MessageDefinition, raw []byte, data map[string]interface{}) ([]byte, error) {
+func createFieldMapper(structValue reflect.Value, mapper map[string]reflect.Value) {
+	structType := structValue.Type()
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		fieldName, ok := field.Tag.Lookup(rosbagStructTag)
+		if !ok {
+			fieldName = field.Name
+		}
+
+		mapper[fieldName] = structValue.Field(i)
+	}
+}
+
+func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) ([]byte, error) {
 	var err error
+
+	value := reflect.ValueOf(data)
+
+	if value.Kind() == reflect.Ptr {
+		value = reflect.Indirect(value)
+	}
+
+	var getFn func(string) interface{}
+	var getFieldTypeFn func(string) reflect.Type
+	var setFn func(string, interface{}) error
+	switch value.Kind() {
+	case reflect.Map:
+		m := data.(map[string]interface{})
+		setFn = func(k string, v interface{}) error {
+			m[k] = v
+			return nil
+		}
+		getFn = func(k string) interface{} {
+			return make(map[string]interface{})
+		}
+		getFieldTypeFn = func(k string) reflect.Type {
+			var m map[string]interface{}
+			return reflect.SliceOf(reflect.TypeOf(m))
+		}
+	case reflect.Struct:
+		mapper := make(map[string]reflect.Value)
+		createFieldMapper(value, mapper)
+		setFn = func(k string, v interface{}) error {
+			fieldValue, ok := mapper[k]
+			if !ok {
+				return nil
+			}
+
+			reflectValue := reflect.ValueOf(v)
+			if reflectValue.Kind() != fieldValue.Kind() {
+				return fmt.Errorf("message field %s is %s, but the struct field is %s", k, reflectValue.Kind(), fieldValue.Kind())
+			}
+
+			fieldValue.Set(reflectValue)
+			return nil
+		}
+		getFn = func(k string) interface{} {
+			fieldValue, ok := mapper[k]
+			if !ok {
+				// TODO: To keep the decoder keeps reading, we need to create this dummy map
+				return make(map[string]interface{})
+			}
+
+			return fieldValue.Interface()
+		}
+		getFieldTypeFn = func(k string) reflect.Type {
+			fieldValue, ok := mapper[k]
+			if !ok {
+				var m map[string]interface{}
+				return reflect.SliceOf(reflect.TypeOf(m))
+			}
+
+			// TODO: Add slice type check
+			return fieldValue.Type()
+		}
+	default:
+		return nil, errInvalidDataType
+	}
+
+	var v interface{}
 	for _, field := range def.Fields {
 		// Const value, no need to parse, simply fill in the data
 		if field.Value != nil {
-			data[field.Name] = field.Value
-		} else if field.Type == MessageFieldTypeComplex {
-			data[field.Name], raw, err = decodeFieldComplex(field, raw)
+			v = field.Value
+		} else if field.Type == MessageFieldTypeComplex && !field.IsArray {
+			v = getFn(field.Name)
+			raw, err = decodeMessageData(field.MsgType, raw, v)
+		} else if field.Type == MessageFieldTypeComplex && field.IsArray {
+			t := getFieldTypeFn(field.Name)
+			v, raw, err = decodeFieldComplexSlice(field, raw, t)
 		} else {
-			data[field.Name], raw, err = decodeFieldBasic(field, raw)
+			v, raw, err = decodeFieldBasic(field, raw)
 		}
 
+		if err != nil {
+			return nil, err
+		}
+
+		err = setFn(field.Name, v)
 		if err != nil {
 			return nil, err
 		}
@@ -279,33 +369,33 @@ func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, [
 	return v, raw[off:], nil
 }
 
-func decodeFieldComplex(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
-	if !field.IsArray {
-		data := make(map[string]interface{})
-		raw, err := decodeMessageData(field.MsgType, raw, data)
-		return data, raw, err
-	}
-
+func decodeFieldComplexSlice(field *MessageFieldDefinition, raw []byte, fieldType reflect.Type) (interface{}, []byte, error) {
 	var length int
-	if field.IsArray {
-		var off int
-		var ok bool
-		length, off, ok = fieldDecodeLength(raw, field.ArraySize)
-		if !ok {
-			return nil, raw, errInvalidFormat
-		}
-		raw = raw[off:]
+	var off int
+	var ok bool
+	length, off, ok = fieldDecodeLength(raw, field.ArraySize)
+	if !ok {
+		return nil, raw, errInvalidFormat
 	}
+	raw = raw[off:]
 
 	var err error
-	vs := make([]map[string]interface{}, length)
-	for i := range vs {
-		vs[i] = make(map[string]interface{})
-		raw, err = decodeMessageData(field.MsgType, raw, vs[i])
+	vs := reflect.MakeSlice(fieldType, length, length)
+	for i := 0; i < length; i++ {
+		v := vs.Index(i)
+		if v.IsNil() {
+			if v.Kind() == reflect.Map {
+				v.Set(reflect.ValueOf(make(map[string]interface{})))
+			} else {
+				v.Set(reflect.New(v.Elem().Type()))
+			}
+		}
+
+		raw, err = decodeMessageData(field.MsgType, raw, v.Interface())
 		if err != nil {
 			return nil, raw, err
 		}
 	}
 
-	return vs, raw, nil
+	return vs.Interface(), raw, nil
 }

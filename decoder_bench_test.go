@@ -36,8 +36,11 @@ func start() {
 
 		switch record := record.(type) {
 		case *RecordMessageData:
-			data := make(map[string]interface{})
-			err := record.Transform(data)
+			// data := make(map[string]interface{})
+			var data struct {
+				MaxRange float32 `rosbag:"max_range"`
+			}
+			err := record.Transform(&data)
 			must(err)
 		}
 		record.Close()
