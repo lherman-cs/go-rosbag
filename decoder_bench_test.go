@@ -40,7 +40,7 @@ func start() {
 			var data struct {
 				MaxRange float32 `rosbag:"max_range"`
 			}
-			err := record.Transform(&data)
+			err := record.View(&data)
 			must(err)
 		}
 		record.Close()

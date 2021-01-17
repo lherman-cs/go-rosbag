@@ -293,14 +293,14 @@ func (record *RecordMessageData) ConnectionHeader() *ConnectionHeader {
 	return record.connHdr
 }
 
-// Transform transforms the underlying raw data to the given data. When possible, Transform
+// View views the underlying raw data in the given v format. When possible, View
 // will convert raw data without making a copy. With no copy, decoding large arrays become really
-// fast! But, this also mean that any data types that are reference based can't be used after this
+// fast! But, this also means that any data types that are reference based can't be used after this
 // Record is closed.
 //
 // So, if the data is absolutely needed after reading this record, you MUST NOT CLOSE this record
 // so that the underlying raw data is not overwritten by other records.
-func (record *RecordMessageData) Transform(v interface{}) error {
+func (record *RecordMessageData) View(v interface{}) error {
 	_, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), v)
 	if err != nil {
 		return err
