@@ -1,3 +1,5 @@
+// rosbag implements Rosbag Format Version 2.0, http://wiki.ros.org/Bags/Format/2.0.
+// Currently, this package only implements the decoder.
 package rosbag
 
 import (
@@ -59,17 +61,25 @@ type Rosbag struct {
 }
 
 type Record interface {
+	// Op parses the header, and lookup for the op field
 	Op() (Op, error)
+	// Header returns raw header byte slice. It contains metadata for the record
 	Header() []byte
+	// Data returns raw data byte slice. It contains record specific data
 	Data() []byte
+	// Close closes the underlying memory allocation for this record so that
+	// the allocated memory can be reused
 	Close()
 }
 
 type RecordBase struct {
 	// Raw contains: <header_len><header><data_len><data>
-	Raw                []byte
-	HeaderLen, DataLen uint32
-	closeFn            func()
+	Raw []byte
+	// HeaderLen contains length in bytes of the header
+	HeaderLen uint32
+	// DataLen contains length in bytes of the data
+	DataLen uint32
+	closeFn func()
 }
 
 func iterateHeaderFields(header []byte, cb func(key, value []byte) bool) error {
@@ -181,26 +191,33 @@ func (record *RecordBase) grow(requiredSize uint32) {
 	}
 }
 
+// RecordBagHeader occurs once in the file as the first record.
 type RecordBagHeader struct {
 	*RecordBase
 }
 
+// IndexPos parses Header to get an offset of first record after the chunk section
 func (record *RecordBagHeader) IndexPos() (uint64, error) {
 	return record.findFieldUint64([]byte("index_pos"))
 }
 
+// ConnCount parses Header to get a number of unique connections in the file
 func (record *RecordBagHeader) ConnCount() (uint32, error) {
 	return record.findFieldUint32([]byte("conn_count"))
 }
 
+// ChunkCount parses Header to get a number of chunk records in the file
 func (record *RecordBagHeader) ChunkCount() (uint32, error) {
 	return record.findFieldUint32([]byte("chunk_count"))
 }
 
+// RecordChunk is a record that contains one or more RecordConnection and/or RecordMessageData.
 type RecordChunk struct {
 	*RecordBase
 }
 
+// Compression parses Header to get the compression algorithm that's used for the underlying chunk data.
+// The supported compression values are "none", "lz4", and "bz2".
 func (record *RecordChunk) Compression() (Compression, error) {
 	value, err := record.findField([]byte("compression"))
 	if err != nil {
@@ -209,18 +226,23 @@ func (record *RecordChunk) Compression() (Compression, error) {
 	return Compression(value), nil
 }
 
+// Size parses Header to get the size in bytes of the uncompressed chunk
 func (record *RecordChunk) Size() (uint32, error) {
 	return record.findFieldUint32([]byte("size"))
 }
 
+// RecordConnection is a record that contains metadata about message data. Some of the metadata are used
+// to encode/decode message data.
 type RecordConnection struct {
 	*RecordBase
 }
 
+// Conn parses Header to get the unique connection ID within a bag
 func (record *RecordConnection) Conn() (uint32, error) {
 	return record.findFieldUint32([]byte("conn"))
 }
 
+// Topic parses Header to get the topic
 func (record *RecordConnection) Topic() (string, error) {
 	value, err := record.findField([]byte("topic"))
 	if err != nil {
@@ -248,25 +270,38 @@ func (record *RecordConnection) ConnectionHeader() (*ConnectionHeader, error) {
 	return &connectionHeader, err
 }
 
+// RecordMessageData contains the serialized message data in the ROS serialization format.
 type RecordMessageData struct {
 	*RecordBase
 	connHdr *ConnectionHeader
 }
 
+// Conn parses Header to get the unique connection ID within a bag
 func (record *RecordMessageData) Conn() (uint32, error) {
 	return record.findFieldUint32([]byte("conn"))
 }
 
+// Time parses Header to get the timestamp when this message was recorded.
+// Note that this timestamp is different from the message header timestamp from ROS. The
+// main difference is that this timestamp is the retrieved time NOT sent time.
 func (record *RecordMessageData) Time() (time.Time, error) {
 	return record.findFieldTime([]byte("time"))
 }
 
+// ConnectionHeader returns the parsed ROS connection header.
 func (record *RecordMessageData) ConnectionHeader() *ConnectionHeader {
 	return record.connHdr
 }
 
-func (record *RecordMessageData) Transform(data interface{}) error {
-	_, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), data)
+// Transform transforms the underlying raw data to the given data. When possible, Transform
+// will convert raw data without making a copy. With no copy, decoding large arrays become really
+// fast! But, this also mean that any data types that are reference based can't be used after this
+// Record is closed.
+//
+// So, if the data is absolutely needed after reading this record, you MUST NOT CLOSE this record
+// so that the underlying raw data is not overwritten by other records.
+func (record *RecordMessageData) Transform(v interface{}) error {
+	_, err := decodeMessageData(&record.connHdr.MessageDefinition, record.Data(), v)
 	if err != nil {
 		return err
 	}
@@ -278,38 +313,47 @@ type RecordIndexData struct {
 	*RecordBase
 }
 
+// Conn parses Header to get the unique connection ID within a bag
 func (record *RecordIndexData) Conn() (uint32, error) {
 	return record.findFieldUint32([]byte("conn"))
 }
 
+// Ver parses Header to get the version of this Index record
 func (record *RecordIndexData) Ver() (uint32, error) {
 	return record.findFieldUint32([]byte("ver"))
 }
 
+// Count parses Header to get the number of messages on conn in the preceding chunk
 func (record *RecordIndexData) Count() (uint32, error) {
 	return record.findFieldUint32([]byte("count"))
 }
 
+// RecordChunkInfo contains metadata about Chunks
 type RecordChunkInfo struct {
 	*RecordBase
 }
 
+// Ver parses Header to get the version of this ChunkInfo record
 func (record *RecordChunkInfo) Ver() (uint32, error) {
 	return record.findFieldUint32([]byte("ver"))
 }
 
+// ChunkPos parses Header to get the offset of the chunk record
 func (record *RecordChunkInfo) ChunkPos() (uint64, error) {
 	return record.findFieldUint64([]byte("chunk_pos"))
 }
 
+// StartTime parses Header to get the timestamp of earliest message in the chunk
 func (record *RecordChunkInfo) StartTime() (time.Time, error) {
 	return record.findFieldTime([]byte("start_time"))
 }
 
+// EndTime parses Header to get the timestamp of latest message in the chunk
 func (record *RecordChunkInfo) EndTime() (time.Time, error) {
 	return record.findFieldTime([]byte("end_time"))
 }
 
+// Count parses Header to get the number of connections in the chunk
 func (record *RecordChunkInfo) Count() (uint32, error) {
 	return record.findFieldUint32([]byte("count"))
 }
