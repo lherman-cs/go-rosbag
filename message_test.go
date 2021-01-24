@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	fuzz "github.com/google/gofuzz"
 )
 
 type TestField struct {
@@ -443,31 +444,230 @@ string stringConst  =  lukas herman# This comment should not be included in the 
 	}
 }
 
-func BenchmarkDecodeMessageData(b *testing.B) {
-	b.StopTimer()
-	msgDefRaw := []byte(`
-uint8[] pixels
-`)
-
-	res := 1920 * 1080
-	var msgDataRaw []byte
-	msgDataRaw = addData(msgDataRaw, uint32(res))
-	for i := 0; i < res; i++ {
-		msgDataRaw = addData(msgDataRaw, uint8(i))
+func TestDecodeMessageDataNew(t *testing.T) {
+	type Expected struct {
+		Struct interface{}
+		Map    map[string]interface{}
 	}
 
-	var msgDef MessageDefinition
-	err := msgDef.unmarshall(msgDefRaw)
-	if err != nil {
-		b.Fatal(err)
+	type TestCase struct {
+		Name     string
+		MsgDef   string
+		Expected func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected)
 	}
 
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		data := make(map[string]interface{})
-		_, err := decodeMessageData(&msgDef, msgDataRaw, data)
-		if err != nil {
-			b.Fatal(err)
-		}
+	testCases := []TestCase{
+		{
+			Name:   "SingleBool",
+			MsgDef: "bool bool",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Bool bool `rosbag:"bool"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"bool": s.Bool,
+				}
+				a := s
+				return addData(nil, s.Bool), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleInt8",
+			MsgDef: "int8 int8",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int8 int8 `rosbag:"int8"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int8": s.Int8,
+				}
+				a := s
+				return addData(nil, s.Int8), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleUint8",
+			MsgDef: "uint8 uint8",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint8 uint8 `rosbag:"uint8"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint8": s.Uint8,
+				}
+				a := s
+				return addData(nil, s.Uint8), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleInt16",
+			MsgDef: "int16 int16",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int16 int16 `rosbag:"int16"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int16": s.Int16,
+				}
+				a := s
+				return addData(nil, s.Int16), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleUint16",
+			MsgDef: "uint16 uint16",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint16 uint16 `rosbag:"uint16"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint16": s.Uint16,
+				}
+				a := s
+				return addData(nil, s.Uint16), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleInt32",
+			MsgDef: "int32 int32",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int32 int32 `rosbag:"int32"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int32": s.Int32,
+				}
+				a := s
+				return addData(nil, s.Int32), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleUint32",
+			MsgDef: "uint32 uint32",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint32 uint32 `rosbag:"uint32"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint32": s.Uint32,
+				}
+				a := s
+				return addData(nil, s.Uint32), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleInt64",
+			MsgDef: "int64 int64",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int64 int64 `rosbag:"int64"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int64": s.Int64,
+				}
+				a := s
+				return addData(nil, s.Int64), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SingleUint64",
+			MsgDef: "uint64 uint64",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint64 uint64 `rosbag:"uint64"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint64": s.Uint64,
+				}
+				a := s
+				return addData(nil, s.Uint64), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			fuzzer := fuzz.New()
+			for i := 0; i < 1000; i++ {
+				var msgDef MessageDefinition
+				err := msgDef.unmarshall([]byte(testCase.MsgDef))
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				raw, actualStruct, expected := testCase.Expected(fuzzer)
+				rawAfter, err := decodeMessageData(&msgDef, raw, actualStruct)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if len(rawAfter) != 0 {
+					t.Fatalf("[Struct] Expected no buffer left after decoding the whole message, but got %v", rawAfter)
+				}
+
+				if diff := cmp.Diff(expected.Struct, actualStruct); diff != "" {
+					t.Fatalf("[Struct] Decoded value is not matched:\n\n%s", diff)
+				}
+
+				actualMap := make(map[string]interface{})
+				rawAfter, err = decodeMessageData(&msgDef, raw, actualMap)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				if len(rawAfter) != 0 {
+					t.Fatalf("[Map] Expected no buffer left after decoding the whole message, but got %v", rawAfter)
+				}
+
+				if diff := cmp.Diff(expected.Struct, actualStruct); diff != "" {
+					t.Fatalf("[Map] Decoded value is not matched:\n\n%s", diff)
+				}
+			}
+		})
 	}
 }
