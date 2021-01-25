@@ -267,8 +267,19 @@ func fieldDecodeBasicSlice(raw []byte, ptr unsafe.Pointer, length int, size int)
 		return
 	}
 
+	if length == 0 {
+		ok = true
+		return
+	}
+
+	raw = raw[off:]
+	if len(raw) < length*size {
+		ok = false
+		return
+	}
+
 	s := (*reflect.SliceHeader)(ptr)
-	s.Data = uintptr(unsafe.Pointer(&raw[off]))
+	s.Data = uintptr(unsafe.Pointer(&raw[0]))
 	s.Len = length
 	s.Cap = length
 	off += length * size

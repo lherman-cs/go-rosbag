@@ -2,6 +2,7 @@ package rosbag
 
 import (
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -89,6 +90,21 @@ func addData(b []byte, v interface{}) []byte {
 	}
 
 	return append(b, buf...)
+}
+
+func addDataMulti(b []byte, v interface{}, isSlice bool) []byte {
+	value := reflect.ValueOf(v)
+	length := value.Len()
+
+	if isSlice {
+		b = addData(b, uint32(length))
+	}
+
+	for i := 0; i < length; i++ {
+		b = addData(b, value.Index(i).Interface())
+	}
+
+	return b
 }
 
 type Object struct {
@@ -404,6 +420,25 @@ func TestDecodeMessageData(t *testing.T) {
 				m := s.ToMap()
 				a := s
 				return addData(nil, &s), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceBool",
+			MsgDef: "bool[] bool",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Bool []bool `rosbag:"bool"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"bool": s.Bool,
+				}
+				a := s
+				return addDataMulti(nil, s.Bool, true), &a, Expected{
 					Struct: &s,
 					Map:    m,
 				}
