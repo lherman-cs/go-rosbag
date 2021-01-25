@@ -67,7 +67,7 @@ func initFieldSliceDecoder(fastMode bool) {
 }
 
 func fieldDecodeLength(raw []byte, fixedLength int) (length int, off int, ok bool) {
-	if fixedLength > 0 {
+	if fixedLength >= 0 {
 		ok = true
 		length = fixedLength
 		return
@@ -218,8 +218,20 @@ func fieldDecodeString(raw []byte, length int) (v interface{}, off int, ok bool)
 		return
 	}
 
+	if length == 0 {
+		v = ""
+		ok = true
+		return
+	}
+
+	raw = raw[off:]
+	if len(raw) < length {
+		ok = false
+		return
+	}
+
 	sl := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	sl.Data = uintptr(unsafe.Pointer(&raw[off]))
+	sl.Data = uintptr(unsafe.Pointer(&raw[0]))
 	sl.Len = length
 	off += length
 	ok = true
@@ -481,7 +493,7 @@ func fieldDecodeStringSlice(raw []byte, length int) (v interface{}, off int, ok 
 	s := make([]string, length)
 	totalOff := off
 	for i := 0; i < length; i++ {
-		v, off, ok = fieldDecodeString(raw[totalOff:], 0)
+		v, off, ok = fieldDecodeString(raw[totalOff:], -1)
 		if !ok {
 			off = 0
 			return

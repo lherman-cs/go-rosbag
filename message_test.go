@@ -332,6 +332,25 @@ func TestDecodeMessageData(t *testing.T) {
 			},
 		},
 		{
+			Name:   "SingleString",
+			MsgDef: "string string",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					String string `rosbag:"string"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"string": s.String,
+				}
+				a := s
+				return addData(nil, s.String), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
 			Name:   "SingleTime",
 			MsgDef: "time time",
 			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {

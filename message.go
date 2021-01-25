@@ -163,7 +163,7 @@ func (def *MessageDefinition) unmarshall(b []byte) error {
 
 		idx = bytes.IndexByte(fieldType, '[')
 		var isArray bool
-		var arraySize int
+		var arraySize int = -1
 		if idx != -1 {
 			off := bytes.IndexByte(fieldType[idx:], ']')
 			if off > 1 {
@@ -224,7 +224,7 @@ type MessageFieldDefinition struct {
 	Type    MessageFieldType
 	Name    string
 	IsArray bool
-	// ArraySize is only used when the field is a fixed-size array
+	// ArraySize is only used when the field is a fixed-size array. If it's a slice, ArraySize is -1
 	ArraySize int
 	// Value is an optional field. It's only being used for constants
 	Value interface{}
@@ -366,15 +366,13 @@ func decodeMessageData(def *MessageDefinition, raw []byte, data interface{}) ([]
 
 func decodeFieldBasic(field *MessageFieldDefinition, raw []byte) (interface{}, []byte, error) {
 	var decodeFuncs map[MessageFieldType]fieldDecodeFunc
-	var length int
 	if field.IsArray {
 		decodeFuncs = fieldDecodeSliceHelper
-		length = field.ArraySize
 	} else {
 		decodeFuncs = fieldDecodeBasicHelper
 	}
 
-	v, off, ok := decodeFuncs[field.Type](raw, length)
+	v, off, ok := decodeFuncs[field.Type](raw, field.ArraySize)
 	if !ok {
 		return nil, raw, errInvalidFormat
 	}
