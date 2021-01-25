@@ -501,6 +501,13 @@ func fieldDecodeStringSlice(raw []byte, length int) (v interface{}, off int, ok 
 		return
 	}
 
+	if length == 0 {
+		var s []string
+		v = s
+		ok = true
+		return
+	}
+
 	s := make([]string, length)
 	totalOff := off
 	for i := 0; i < length; i++ {

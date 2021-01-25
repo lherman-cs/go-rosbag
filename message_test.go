@@ -18,6 +18,18 @@ func fuzzDuration(fuzzer *fuzz.Fuzzer) time.Duration {
 	return time.Second*time.Duration(sec) + time.Nanosecond*time.Duration(nsec)
 }
 
+func fuzzDurationSlice(fuzzer *fuzz.Fuzzer) []time.Duration {
+	var length uint32
+	fuzzer.Fuzz(&length)
+	length %= 100 // make sure we don't blow up the length
+
+	s := make([]time.Duration, length)
+	for i := range s {
+		s[i] = fuzzDuration(fuzzer)
+	}
+	return s
+}
+
 func fuzzTime(fuzzer *fuzz.Fuzzer) time.Time {
 	// ROS uses uint32 to represent sec and nsec, so we need to tell fuzzer these boundaries.
 	// This also means that there's no time before UNIX epoch in ROS.
@@ -25,6 +37,18 @@ func fuzzTime(fuzzer *fuzz.Fuzzer) time.Time {
 	fuzzer.Fuzz(&sec)
 	fuzzer.Fuzz(&nsec)
 	return time.Unix(int64(sec), int64(nsec))
+}
+
+func fuzzTimeSlice(fuzzer *fuzz.Fuzzer) []time.Time {
+	var length uint32
+	fuzzer.Fuzz(&length)
+	length %= 100 // make sure we don't blow up the length
+
+	s := make([]time.Time, length)
+	for i := range s {
+		s[i] = fuzzTime(fuzzer)
+	}
+	return s
 }
 
 type Marshallable interface {
@@ -414,12 +438,16 @@ func TestDecodeMessageData(t *testing.T) {
 			uint32 age
 			`,
 			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
-				var s Object
+				s := struct {
+					Object Object `rosbag:"object"`
+				}{}
 				fuzzer.Fuzz(&s)
 
-				m := s.ToMap()
+				m := map[string]interface{}{
+					"object": s.Object.ToMap(),
+				}
 				a := s
-				return addData(nil, &s), &a, Expected{
+				return addData(nil, &s.Object), &a, Expected{
 					Struct: &s,
 					Map:    m,
 				}
@@ -444,6 +472,282 @@ func TestDecodeMessageData(t *testing.T) {
 				}
 			},
 		},
+		{
+			Name:   "SliceInt8",
+			MsgDef: "int8[] int8",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int8 []int8 `rosbag:"int8"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int8": s.Int8,
+				}
+				a := s
+				return addDataMulti(nil, s.Int8, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceUint8",
+			MsgDef: "uint8[] uint8",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint8 []uint8 `rosbag:"uint8"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint8": s.Uint8,
+				}
+				a := s
+				return addDataMulti(nil, s.Uint8, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceInt16",
+			MsgDef: "int16[] int16",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int16 []int16 `rosbag:"int16"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int16": s.Int16,
+				}
+				a := s
+				return addDataMulti(nil, s.Int16, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceUint16",
+			MsgDef: "uint16[] uint16",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint16 []uint16 `rosbag:"uint16"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint16": s.Uint16,
+				}
+				a := s
+				return addDataMulti(nil, s.Uint16, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceInt32",
+			MsgDef: "int32[] int32",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int32 []int32 `rosbag:"int32"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int32": s.Int32,
+				}
+				a := s
+				return addDataMulti(nil, s.Int32, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceUint32",
+			MsgDef: "uint32[] uint32",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint32 []uint32 `rosbag:"uint32"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint32": s.Uint32,
+				}
+				a := s
+				return addDataMulti(nil, s.Uint32, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceInt64",
+			MsgDef: "int64[] int64",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Int64 []int64 `rosbag:"int64"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"int64": s.Int64,
+				}
+				a := s
+				return addDataMulti(nil, s.Int64, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceUint64",
+			MsgDef: "uint64[] uint64",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Uint64 []uint64 `rosbag:"uint64"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"uint64": s.Uint64,
+				}
+				a := s
+				return addDataMulti(nil, s.Uint64, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceFloat32",
+			MsgDef: "float32[] float32",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Float32 []float32 `rosbag:"float32"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"float32": s.Float32,
+				}
+				a := s
+				return addDataMulti(nil, s.Float32, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceFloat64",
+			MsgDef: "float64[] float64",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Float64 []float64 `rosbag:"float64"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"float64": s.Float64,
+				}
+				a := s
+				return addDataMulti(nil, s.Float64, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceString",
+			MsgDef: "string[] string",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					String []string `rosbag:"string"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				m := map[string]interface{}{
+					"string": s.String,
+				}
+				a := s
+				return addDataMulti(nil, s.String, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceTime",
+			MsgDef: "time[] time",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Time []time.Time `rosbag:"time"`
+				}{}
+				s.Time = fuzzTimeSlice(fuzzer)
+
+				m := map[string]interface{}{
+					"time": s.Time,
+				}
+				a := s
+				return addDataMulti(nil, s.Time, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		{
+			Name:   "SliceDuration",
+			MsgDef: "duration[] duration",
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Duration []time.Duration `rosbag:"duration"`
+				}{}
+				s.Duration = fuzzDurationSlice(fuzzer)
+
+				m := map[string]interface{}{
+					"duration": s.Duration,
+				}
+				a := s
+				return addDataMulti(nil, s.Duration, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},
+		/*{
+			Name: "SliceObject",
+			MsgDef: `
+			object[] object
+
+			MSG: custom_msgs/object
+			string name
+			uint32 age
+			`,
+			Expected: func(fuzzer *fuzz.Fuzzer) ([]byte, interface{}, Expected) {
+				s := struct {
+					Object []Object `rosbag:"object"`
+				}{}
+				fuzzer.Fuzz(&s)
+
+				slice := make([]map[string]interface{}, len(s.Object))
+				for i, v := range s.Object {
+					slice[i] = v.ToMap()
+				}
+				m := map[string]interface{}{
+					"object": slice,
+				}
+				a := s
+				return addDataMulti(nil, s.Object, true), &a, Expected{
+					Struct: &s,
+					Map:    m,
+				}
+			},
+		},*/
 	}
 
 	for _, testCase := range testCases {
