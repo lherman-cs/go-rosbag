@@ -26,7 +26,7 @@ func main() {
 		switch record := record.(type) {
 		case *rosbag.RecordMessageData:
 			data := make(map[string]interface{})
-			err = record.View(data)
+			err = record.ViewAs(data)
 			must(err)
 			pp.Println(data)
 		}
