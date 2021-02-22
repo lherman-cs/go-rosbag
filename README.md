@@ -82,7 +82,7 @@ Currently, the unit tests only cover the happy path, and it's not extensive as I
 
 ## Alternatives
 
-There are two known alternatives to go-rosbag: 
+There are two known alternatives to go-rosbag (at least that I know of): 
 
 * https://github.com/starship-technologies/gobag: This project seems to be lacking a good way to process large rosbags. Additionally seems to lack an easy way to Unmarshall messages to structs.
 * https://github.com/brychanrobot/goros/blob/master/rosbag.go: This project seems to be incomplete and abandoned.
