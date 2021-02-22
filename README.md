@@ -57,10 +57,10 @@ func main() {
 
 Hardware specs:
 
-Model: MacBook Pro (15-inch, 2017)
-Processor: 2.8 GHz Quad-Core Intel Core i7
-Memory: 16 GB 2133 MHz LPDDR3
-Storage: 256GB PCIe-based onboard SSD
+* Model: MacBook Pro (15-inch, 2017)
+* Processor: 2.8 GHz Quad-Core Intel Core i7
+* Memory: 16 GB 2133 MHz LPDDR3
+* Storage: 256GB PCIe-based onboard SSD
 
 The following benchmark ([source](https://github.com/lherman-cs/go-rosbag/blob/bb8c5d16d3b51ca42f137c8214b07446eaea25a0/decoder_bench_test.go)) was taken by parsing a 696 MB rosbag file from [webviz](https://webviz.io/). The bag contains frames and metadata from a car.
 
