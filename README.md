@@ -5,11 +5,6 @@
 
 Go [Rosbag](http://wiki.ros.org/rosbag) parser. Designed to provide **ease of use**, **speed**, and **streamability**.
 
-## Why?
-Processing Rosbags in Go, especially huge Rosbags was non-trivial, go-rosbag aims to add unofficial support for Rosbag parsing in Go.
-
-There is offical Rosbag parsing support in Python and C++. There is unofficial Rosbag parsing support in Javascript. But I, and imagine you do as well, just love writing in Go 😍. 
-
 ## Usage
 
 ```go
