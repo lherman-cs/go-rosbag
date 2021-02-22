@@ -6,9 +6,54 @@ Processing Rosbags in Go, especially huge Rosbags was non-trivial, go-rosbag aim
 
 There is offical Rosbag parsing support in Python and C++. There is unofficial Rosbag parsing support in Javascript. But I, and imagine you do as well, just love writing in Go 😍. 
 
-## Benchmark
+## Usage
 
-Benchmark source code: .
+```go
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/lherman-cs/go-rosbag"
+)
+
+func main() {
+	f, _ := os.Open("example.bag")
+	defer f.Close()
+
+	decoder := rosbag.NewDecoder(f)
+	for {
+		record, err := decoder.Read()
+		if err == io.EOF {
+			break
+		}
+
+		switch record := record.(type) {
+		case *rosbag.RecordMessageData:
+			data := make(map[string]interface{})
+			// As the API name is called, the variable "data" will be filled and used for users 
+			// to access the underlying ROS messages in Go structure, it's not meant to be mutated.
+			// The underlying buffer is NOT COPIED to data, meaning that any modification to 
+			// referenced objects will also modify the buffer, and this is also true the other way 
+			// around. Since go-rosbag reuses the underlying buffer for the subsequent records 
+			// (this is done by calling record.Close()), the next Read call WILL OVERWRITE the 
+			// current underlying buffer. Meaning, the variable "data" MUST NOT be used after the 
+			// next read. All of the data that need to be used after the subsequent reads 
+			// MUST BE COPIED. Copying data can be done in a manual way, or you can also explicitly
+			// skip record.Close(). By not calling Close, it'll tell go-rosbag to not reuse the 
+			// buffer, thus it "copies" the buffer.
+			_ = record.ViewAs(data)
+			fmt.Println(data)
+		}
+    
+		record.Close()
+	}
+}
+```
+
+## Benchmark
 
 Hardware specs:
 
