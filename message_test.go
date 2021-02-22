@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	fuzz "github.com/google/gofuzz"
 )
 
@@ -770,7 +771,7 @@ func TestDecodeMessageData(t *testing.T) {
 					t.Fatalf("[Struct] Expected no buffer left after decoding the whole message, but got %v", rawAfter)
 				}
 
-				if diff := cmp.Diff(expected.Struct, actualStruct); diff != "" {
+				if diff := cmp.Diff(expected.Struct, actualStruct, cmpopts.EquateEmpty()); diff != "" {
 					t.Fatalf("[Struct] Decoded value is not matched:\n\n%s", diff)
 				}
 
@@ -784,7 +785,7 @@ func TestDecodeMessageData(t *testing.T) {
 					t.Fatalf("[Map] Expected no buffer left after decoding the whole message, but got %v", rawAfter)
 				}
 
-				if diff := cmp.Diff(expected.Struct, actualStruct); diff != "" {
+				if diff := cmp.Diff(expected.Struct, actualStruct, cmpopts.EquateEmpty()); diff != "" {
 					t.Fatalf("[Map] Decoded value is not matched:\n\n%s", diff)
 				}
 			}
