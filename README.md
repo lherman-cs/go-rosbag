@@ -1,15 +1,18 @@
 # go-rosbag
-[Rosbag](http://wiki.ros.org/rosbag) parser written in Go. It's designed to be **lazy, low memory usage, fast, streamable, and easy-to-use**.
+Go [Rosbag](http://wiki.ros.org/rosbag) parser. Designed to provide **ease of use, low memory usage, speed, streamability, and lazy operations**.
 
 ## Why?
-I want to process huge Rosbag data in the backend without bringing ROS ecosystem. So, I think Go is a great language for this. Unfortunately, I couldn't find a good library to fullfil what I need.
+Processing Rosbags in Go, especially huge Rosbags was non-trivial.
 
-These are the libraries that I've found in my search:
-
-* https://github.com/starship-technologies/gobag: this is probably the closest library, but unfortunately it doesn't have a good way to process big rosbags and there's no easy way to Unmarshall the messages to structs
-* https://github.com/brychanrobot/goros/blob/master/rosbag.go: this project seems to be incomplete and abandoned.
-
+There is offical Rosbag parsing support in Python and C++. There is unofficial Rosbag parsing support in Javascript. But I, and imagine you do as well, just love writing in Go 😍. So this library aims to add unofficial support for Rosbag parsing in Go.
 
 ## Code Coverage
 
 Currently, the unit tests only cover the happy path, and it's not extensive as I want to be. Fuzzing has been added for testing ROS message decoding to cover data corruption. I'm still working on adding coverage during my free time.
+
+## Alternatives
+
+There are two known alternatives to go-rosbag: 
+
+* https://github.com/starship-technologies/gobag: This project seems to be lacking a good way to process large rosbags. Additionally seems to lack an easy way to Unmarshall messages to structs.
+* https://github.com/brychanrobot/goros/blob/master/rosbag.go: This project seems to be incomplete and abandoned.
