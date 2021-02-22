@@ -3,7 +3,7 @@
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/lherman-cs/go-rosbag)](https://pkg.go.dev/github.com/lherman-cs/go-rosbag)
 [![CI](https://github.com/lherman-cs/go-rosbag/actions/workflows/ci.yaml/badge.svg)](https://github.com/lherman-cs/go-rosbag/actions/workflows/ci.yaml)
 
-Go [Rosbag](http://wiki.ros.org/rosbag) parser. Designed to provide **ease of use, speed, streamability, and lazy operations**.
+Go [Rosbag](http://wiki.ros.org/rosbag) parser. Designed to provide **ease of use, speed, and streamability**.
 
 ## Why?
 Processing Rosbags in Go, especially huge Rosbags was non-trivial, go-rosbag aims to add unofficial support for Rosbag parsing in Go.
