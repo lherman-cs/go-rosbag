@@ -1,4 +1,8 @@
 # go-rosbag
+
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/lherman-cs/go-rosbag)](https://pkg.go.dev/github.com/lherman-cs/go-rosbag)
+[![CI](https://github.com/lherman-cs/go-rosbag/actions/workflows/ci.yaml/badge.svg)](https://github.com/lherman-cs/go-rosbag/actions/workflows/ci.yaml)
+
 Go [Rosbag](http://wiki.ros.org/rosbag) parser. Designed to provide **ease of use, low memory usage, speed, streamability, and lazy operations**.
 
 ## Why?
