@@ -79,13 +79,11 @@ func main() {
 
 		switch record := record.(type) {
 		case *rosbag.RecordMessageData:
-			if record.ConnectionHeader().Topic != "/pixel" {
-				continue
+			if record.ConnectionHeader().Topic == "/pixel" {
+				var pixel Pixel
+				_ = record.ViewAs(&pixel)
+				fmt.Println(pixel)
 			}
-			
-			var pixel Pixel
-			_ = record.ViewAs(&pixel)
-			fmt.Println(pixel)
 		}
     
     		// Mark the current record is no longer used, the underlying buffer can be reused.
