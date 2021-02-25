@@ -94,6 +94,31 @@ func main() {
 }
 ```
 
+## Data Type Mapping
+
+### Primitive Types
+
+|ROS Type|Go Type|
+|:--:|:--:|
+|bool|bool|
+|int8|int8|
+|byte|int8|
+|uint8|uint8|
+|char|uint8|
+|int16|int16|
+|uint16|uint16|
+|int32|uint32|
+|int64|uint64|
+|float32|float32|
+|float64|float64|
+|string|string|
+|time|[time.Time](https://golang.org/pkg/time/#Time)|
+|duration|[time.Duration](https://golang.org/pkg/time/#Duration)|
+
+### Array Handling
+
+Both fixed-length and variable-length are mapped to Go slices. For example, uint8[] with a length of 3 and uint8[3] will be mapped to []uint8 in Go.
+
 ## Benchmark
 
 Hardware specs:
