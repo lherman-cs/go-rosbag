@@ -117,7 +117,7 @@ func main() {
 
 ### Array Handling
 
-Both fixed-length and variable-length are mapped to Go slices. For example, uint8[] with a length of 3 and uint8[3] will be mapped to []uint8 in Go.
+Both fixed-length and variable-length arrays are mapped to Go slices. For example, uint8[] with a length of 3 and uint8[3] will be mapped to []uint8 in Go.
 
 ## Benchmark
 
