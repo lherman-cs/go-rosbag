@@ -32,17 +32,23 @@ func main() {
 		switch record := record.(type) {
 		case *rosbag.RecordMessageData:
 			data := make(map[string]interface{})
-			// As the API name is called, the variable "data" will be filled and used for users 
-			// to access the underlying ROS messages in Go structure, it's not meant to be mutated.
-			// The underlying buffer is NOT COPIED to data, meaning that any modification to 
-			// referenced objects will also modify the buffer, and this is also true the other way 
-			// around. Since go-rosbag reuses the underlying buffer for the subsequent records 
-			// (this is done by calling record.Close()), the next Read call WILL OVERWRITE the 
-			// current underlying buffer. Meaning, the variable "data" MUST NOT be used after the 
-			// next read. All of the data that need to be used after the subsequent reads 
-			// MUST BE COPIED. Copying data can be done in a manual way, or you can also explicitly
-			// skip record.Close(). By not calling Close, it'll tell go-rosbag to not reuse the 
-			// buffer, thus it "copies" the buffer.
+			// As the API name is called, the variable "data" 
+			// will be filled and used for users to access the 
+			// underlying ROS messages in Go structure, it's not 
+			// meant to be mutated. The underlying buffer is 
+			// NOT COPIED to data, meaning that any modification to 
+			// referenced objects will also modify the buffer, and
+			// this is also true the other way around. Since go-rosbag
+			// reuses the underlying buffer for the subsequent records 
+			// (this is done by calling record.Close()), the next Read 
+			// call WILL OVERWRITE the current underlying buffer. 
+			// Meaning, the variable "data" MUST NOT be used after the 
+			// next read. All of the data that need to be used after 
+			// the subsequent reads MUST BE COPIED. Copying data can be 
+			// done in a manual way, or you can also explicitly 
+			// skip record.Close(). By not calling Close, it'll tell 
+			// go-rosbag to not reuse the buffer, thus it "copies" 
+			// the buffer.
 			_ = record.ViewAs(data)
 			fmt.Println(data)
 		}
@@ -78,7 +84,7 @@ Please see the [examples](examples) directory within this repository.
 
 ## Code Coverage
 
-Currently, the unit tests only cover the happy path, and it's not extensive as I want it to be. Fuzzing has been added for testing ROS message decoding to cover data corruption. I'm still working on adding coverage during my free time.
+Currently, the unit tests only cover the happy path, and it's not extensive as I want it to be. I'm still working on adding coverage during my free time.
 
 ## Alternatives
 
@@ -89,7 +95,7 @@ There are two known alternatives to go-rosbag (at least that I know of):
 
 ## Contributing
 
-Any contribution is welcomed! I will review pull requests as my time permits.
+Any contribution is welcomed! I will review pull requests as soon as possible.
 
 ## License
 
