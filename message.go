@@ -82,12 +82,8 @@ func decodeConstValue(fieldType MessageFieldType, raw []byte) (interface{}, erro
 
 	switch fieldType {
 	case MessageFieldTypeBool:
-		v, err := strconv.ParseUint(rawStr, 10, 8)
-		if err != nil {
-			return nil, err
-		}
-
-		return v != 0, nil
+		v, err := strconv.ParseBool(rawStr)
+		return v, err
 	case MessageFieldTypeInt8:
 		v, err := strconv.ParseInt(rawStr, 10, 8)
 		return int8(v), err
